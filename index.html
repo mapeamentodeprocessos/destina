@@ -3565,7 +3565,8 @@ function localAnswer(q, msg) {
     const r = nluResponder({...nl, intent:AS.ctx.intent, ents}, msg); if (r) { AS.ctx = {intent:AS.ctx.intent, ents}; return r; }
   }
   const ok = r => { AS.ctx = {intent:nl.intent, ents:nl.ents}; return (nl.fixes && nl.fixes.length ? `(Entendi “${nl.fixes.map(f => f[1].toLowerCase()).join(", ")}”.)\n` : "") + r; };
-  if (nl.intent && nl.score >= 0.5) { const r = nluResponder(nl, msg); if (r) return ok(r); }
+  const pedidoDeAcao = /^(MONTE|MONTAR|MONTA|CRIE|CRIAR|CRIA|PREPARE|PREPARAR|FACA|FAZER|FAZ|GERE|GERAR|ABRA|ABRIR)\b/.test(nl.n || "");
+  if (!pedidoDeAcao && nl.intent && nl.score >= 0.5) { const r = nluResponder(nl, msg); if (r) return ok(r); }
   const r2 = localAnswerRegras(q, msg); if (r2) { AS.ctx = null; return r2; }
   if (nl.intent && nl.score >= 0.3) { const r = nluResponder(nl, msg); if (r) return ok(r); }
   return nluEsclarecer(nl, msg);
