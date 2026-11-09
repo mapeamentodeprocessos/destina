@@ -3003,14 +3003,14 @@ async function persistOrg(rows, meta) {
 // =====================================================================
 const AS = {open:false, turns:[], msgs:[], busy:false, ctl:null, status:"", sample:null, tools:false, myLog:null};
 const TELAS = {painel:"Painel", reserva:"Reserva técnica", empenhos:"Empenhos e tombamento", planos:"Planos de destinação", autorizacoes:"Autorizações", entregas:"Separação e entrega", monitoramento:"Monitoramento", documentos:"Documentos e autenticidade", configuracoes:"Configurações"};
-const SYN = {GELADEIRA:"REFRIGERADOR", "MICRO-ONDAS":"MICROONDAS", SPLIT:"HI-WALL", BEBEDOUROS:"BEBEDOURO"};
+const SYN = {GELADEIRA:"REFRIGERADOR", GELADEIRAS:"REFRIGERADOR", "MICRO-ONDAS":"MICROONDAS", SPLIT:"HI-WALL", BEBEDOUROS:"BEBEDOURO", PC:"COMPUTADOR", PCS:"COMPUTADOR", CPU:"COMPUTADOR", CPUS:"COMPUTADOR", DESKTOP:"COMPUTADOR", DESKTOPS:"COMPUTADOR", NOTE:"NOTEBOOK", NOTES:"NOTEBOOK", LAPTOP:"NOTEBOOK", LAPTOPS:"NOTEBOOK", "AR-CONDICIONADO":"AR CONDICIONADO", ARES:"AR"};
 function matchText(desc, q) {
   const D = normName(desc), Q = normName(SYN[normName(q)] || q);
   if (!Q) return true;
   const cD = D.replace(/[^A-Z0-9]/g, ""), cQ = Q.replace(/[^A-Z0-9]/g, "");
   if (cQ.length >= 4 && cD.includes(cQ)) return true;
   const words = D.split(/[^A-Z0-9]+/).filter(Boolean);
-  return Q.split(/[^A-Z0-9]+/).filter(Boolean).every(t => { t = SYN[t] || t; const st = t.length > 4 ? t.replace(/EIS$/, "EL").replace(/AIS$/, "AL").replace(/OES$/, "AO").replace(/ES$/, "").replace(/S$/, "") : t; return t.length <= 2 ? words.includes(t) : words.some(w => w.startsWith(st)); });
+  return Q.split(/[^A-Z0-9]+/).filter(Boolean).every(t => { t = SYN[t] || t; const st = t.length > 4 ? t.replace(/EIS$/, "EL").replace(/AIS$/, "AL").replace(/OES$/, "AO").replace(/ES$/, "").replace(/S$/, "") : t; return t.length <= 2 ? words.includes(t) : words.some(w => w.startsWith(st) || (st.length >= 6 && w.includes(st))); });
 }
 // ---------- ferramentas (executam na página, com números exatos) ----------
 function tConsultarEstoque({termo = "", categoria = "", apenas_disponiveis = false} = {}) {
@@ -3159,13 +3159,13 @@ function localAnswer(q, msg) {
     const k = tIndicadores(), pend = (k.minhas_pendencias || []).length, P = panorama();
     act({tipo:"abrir_tela", tela:"reserva", rotulo:"Ver a reserva técnica"});
     return `${saudacao()}${nome ? ", " + esc(nome) : ""}! ${pend ? `Você tem **${plural(pend, "pendência", "pendências")}** no seu perfil.` : "Você não tem pendências agora."} Hoje a reserva tem **${fmtN(P.sg)} bens sob guarda**, ${fmtN(P.dp)} disponíveis para destinar.\n\nPergunte o que precisar, por exemplo: “quantos ar-condicionados temos?”, “o que aguarda a minha assinatura?” ou “empenhos aguardando tombamento”.`; } }
-  if (/^(OBRIGAD|VALEU|BRIGAD|AGRADEC|MUITO OBRIGAD|GRATO|GRATA|PERFEITO|OTIMO|BELEZA|SHOW|OK|CERTO)\b/.test(n) && n.split(" ").length <= 4) return "Por nada! Se precisar de mais alguma informação da reserva, é só perguntar.";
+  if (/^(MUITO )?(OBRIGAD\w*|VALEU|BRIGAD\w*|AGRADEC\w*|GRAT[OA]|PERFEITO|OTIMO|BELEZA|SHOW|OK|CERTO|BLZ)\b/.test(n) && n.split(" ").length <= 4) return "Por nada! Se precisar de mais alguma informação da reserva, é só perguntar.";
   if (/^(TUDO BEM|TUDO BOM|COMO VAI|COMO VOCE ESTA)\b/.test(n)) return `Tudo certo por aqui${nome ? ", " + esc(nome) : ""}. Em que posso ajudar com a reserva técnica?`;
   if (/^(AJUDA|HELP|MENU|COMANDOS|O QUE (VOCE|VC) (FAZ|SABE|PODE)|COMO (FUNCIONA|TE USAR|USAR)|QUEM (E|EH) VOCE)\b/.test(n))
     return "Eu respondo com os dados do Destina e ofereço botões para agir. Você pode perguntar, por exemplo:\n- **Totais:** “quantos bens temos hoje?”, “valor total da reserva”\n- **Materiais:** “quantos ar-condicionados temos?”, “itens com maior estoque”\n- **Planos:** “PD 0008/2026”, “planos em andamento”, “o que aguarda a minha assinatura?”\n- **Empenhos e tombamento:** “2026NE000488”, “empenhos aguardando tombamento”, “tombamento 300120”\n- **Unidades:** “o que foi entregue para o CCS?”, “unidades que mais receberam”\n- **Ações:** “monte um plano com 20 cadeiras para a Biblioteca Central”";
   // 0b) totais gerais: “quantos bens no total eu tenho hoje?”
   if (/\bQUANT|\bTOTAL\b/.test(n)) {
-    const GEN = new Set("QUANTO QUANTA QUANTOS QUANTAS QUANTIDADE QUAL A O OS AS E DE DO DA DOS DAS NO NA NOS NAS EM AO AOS TOTAL GERAL TODO TODA TODOS TODAS TUDO EU NOS TENHO TEMOS TEM TER HA EXISTE EXISTEM HOJE AGORA ATUALMENTE ATUAL MOMENTO NESTE NESSE BENS BEM ITENS ITEM MATERIAIS MATERIAL PATRIMONIO PATRIMONIAIS PERMANENTES PECAS UNIDADES COISAS RESERVA TECNICA ESTOQUE ALMOXARIFADO CENTRAL DISPONIVEIS DISPONIVEL SOB GUARDA GUARDADOS CADASTRADOS REGISTRADOS NOSSO NOSSA SISTEMA DESTINA AQUI LA ESTA ESTAO QUE AINDA SALDO".split(" "));
+    const GEN = new Set("QUANTO QUANTA QUANTOS QUANTAS QUANTIDADE QUAL A O OS AS E DE DO DA DOS DAS NO NA NOS NAS EM AO AOS TOTAL GERAL TODO TODA TODOS TODAS TUDO EU NOS TENHO TEMOS TEM TER HA EXISTE EXISTEM HOJE AGORA ATUALMENTE ATUAL MOMENTO NESTE NESSE BENS BEM ITENS ITEM MATERIAIS MATERIAL PATRIMONIO PATRIMONIAIS PERMANENTES PECAS UNIDADES COISAS RESERVA TECNICA ESTOQUE ALMOXARIFADO CENTRAL DISPONIVEIS DISPONIVEL SOB GUARDA GUARDADOS CADASTRADOS REGISTRADOS NOSSO NOSSA SISTEMA DESTINA AQUI LA ESTA ESTAO QUE AINDA SALDO DIFERENTES TIPOS TIPO CATALOGO CADASTRO CADASTRADO REGISTRADO GUARDADO ARMAZENADOS POSSUO POSSUIMOS".split(" "));
     const resto = n.split(" ").filter(w => w && !GEN.has(w));
     if (!resto.length) { const P = panorama(), k = tIndicadores();
       act({tipo:"abrir_tela", tela:"reserva", rotulo:"Ver a reserva técnica"});
