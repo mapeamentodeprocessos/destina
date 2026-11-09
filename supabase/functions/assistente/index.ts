@@ -6,7 +6,7 @@
 //
 // Segredos (Edge Functions › Secrets) — cadastre UM dos dois:
 //   ANTHROPIC_API_KEY   (modelo: ANTHROPIC_MODEL, padrão claude-sonnet-5-5)
-//   GEMINI_API_KEY      (modelo: GEMINI_MODEL, padrão gemini-2.5-flash)
+//   GEMINI_API_KEY      (modelo: GEMINI_MODEL, padrão gemini-flash-latest)
 // SUPABASE_URL e SUPABASE_ANON_KEY já existem em toda função do Supabase.
 
 const CORS = {
@@ -72,7 +72,7 @@ async function gemini(body: any) {
     }
     return { role: m.role === "assistant" ? "model" : "user", parts: parts.length ? parts : [{ text: " " }] };
   });
-  const model = Deno.env.get("GEMINI_MODEL") || "gemini-2.5-flash";
+  const model = Deno.env.get("GEMINI_MODEL") || "gemini-flash-latest";
   const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${Deno.env.get("GEMINI_API_KEY")}`, {
     method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({
