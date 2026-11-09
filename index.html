@@ -1146,7 +1146,7 @@ async function enterOfficial() {
   if (!SB.configured) return;
   S.mode = "oficial"; lsSet("destina_mode", "oficial"); clearInterval(SBTIMER);
   S.items = {}; S.plans = {}; S.perfis = {}; S.perfisList = []; S.alog = []; SBSIG = "";
-  if (!SB.s) { S.role = null; S.me = {id:null, name:"", roles:[]}; renderShell(); $("#view").innerHTML = vLogin(); return; }
+  if (!SB.s) { S.role = null; S.me = {id:null, name:"", roles:[]}; renderShell(); if (S.route === "verificar") { $("#view").innerHTML = vVerificarPublico(); carregarVerificacao(); } else $("#view").innerHTML = vLogin(); return; }
   $("#view").innerHTML = '<div class="splash"><div><h2>Conectando ao ambiente oficial…</h2><p class="muted">Carregando a reserva técnica.</p></div></div>';
   try { await sbCarregarMe(); await sbLoad(true); }
   catch (e) { if (e.sessao) { SB.clear(); return enterOfficial(); } S.offline = true; toast("Não foi possível falar com o servidor: " + e.message, true); }
