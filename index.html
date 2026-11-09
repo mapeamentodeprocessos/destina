@@ -2398,7 +2398,7 @@ function formImportarEmpenho() {
     foot:`<button class="btn" data-act="close">Cancelar</button><button class="btn ghost" data-act="emp-novo">Digitar manualmente</button>`});
   $("#ei-f", m).onchange = async ev => {
     const f = ev.target.files[0]; if (!f) return; const msg = $("#ei-m", m); msg.style.color = ""; msg.textContent = "Lendo " + f.name + "…";
-    try { const r = await lerArquivoEmpenho(f); closeModal(); formEmpenho(r); }
+    try { const r = await lerArquivoEmpenho(f); closeModal(); if (r.grupos && r.grupos.length > 1) escolherEmpenhos(r); else formEmpenho(r); }
     catch (e) { msg.style.color = "var(--crit-ink)"; msg.textContent = "Não foi possível ler o arquivo: " + e.message; }
   };
 }
@@ -2408,11 +2408,13 @@ async function lerArquivoEmpenho(f) {
   if (ext === "pdf" || f.type === "application/pdf") linhas = await pdfLinhas(buf);
   else {
     await loadScript(LIB_XLSX);
-    const wb = ext === "txt" || ext === "csv" ? XLSX.read(new TextDecoder(detectarCodificacao(buf)).decode(buf), {type:"string", raw:true}) : XLSX.read(buf, {type:"array", cellDates:true});
-    linhas = []; wb.SheetNames.forEach(n => XLSX.utils.sheet_to_json(wb.Sheets[n], {header:1, raw:false, defval:""}).forEach(r => linhas.push(r.map(c => String(c ?? "").trim()))));
+    const wb = ext === "txt" || ext === "csv" ? XLSX.read(new TextDecoder(detectarCodificacao(buf)).decode(buf), {type:"string", raw:true}) : XLSX.read(buf, {type:"array", cellDates:true, dateNF:"dd/mm/yyyy"});
+    linhas = []; wb.SheetNames.forEach(n => { linhas.push(["§ABA§"]); XLSX.utils.sheet_to_json(wb.Sheets[n], {header:1, raw:false, defval:"", dateNF:"dd/mm/yyyy"}).forEach(r => linhas.push(r.map(c => String(c ?? "").trim()))); });
   }
   const r = interpretarEmpenho(linhas, ext === "pdf");
   r.arquivo = f.name;
+  if (r.grupos && r.grupos.length > 1) return r;
+  if (r.grupos && r.grupos.length === 1) { r.cab = {...r.cab, ...r.grupos[0].cab}; r.itens = r.grupos[0].itens; }
   r.aviso = r.itens.length ? {t:`Lemos ${plural(r.itens.length, "item", "itens")} de ${f.name}`, d:"Confira número do empenho, quantidades e valores antes de registrar. Você pode corrigir qualquer campo."}
                            : {t:"Não encontramos a tabela de itens neste arquivo", d:"Os dados do cabeçalho que conseguimos ler já estão preenchidos. Digite os itens abaixo ou tente o arquivo em Excel."};
   return r;
@@ -2446,19 +2448,23 @@ function interpretarEmpenho(linhas, ehPdf) {
   // 1) tabela com cabeçalho reconhecível
   const ehDesc = s => /descri|especifica|material|produto|objeto|discrimina/i.test(s), ehQtd = s => /^(qtd|qtde|quant)/i.test(s), ehVu = s => /unit|pre[cç]o\s*un|v\.?\s*un/i.test(s), ehTot = s => /total/i.test(s) && !/unit/i.test(s), ehUm = s => /^(un|und|unid|unidade|u\.?\s*m|medida|unid\.?\s*medida)\b\.?/i.test(s);
   let melhor = null;
-  linhas.forEach((r, k) => { const sc = (r.some(ehDesc) ? 2 : 0) + (r.some(ehQtd) ? 2 : 0) + (r.some(ehVu) ? 1 : 0) + (r.some(ehTot) ? 1 : 0); if (sc >= 4 && (!melhor || sc > melhor.sc)) melhor = {k, sc}; });
+  linhas.forEach((r, k) => { if (r[0] === "§ABA§") return; const sc = (r.some(ehDesc) ? 2 : 0) + (r.some(ehQtd) ? 2 : 0) + (r.some(ehVu) ? 1 : 0) + (r.some(ehTot) ? 1 : 0); if (sc >= 4 && (!melhor || sc > melhor.sc)) melhor = {k, sc}; });
   const itens = [];
   const n = v => { if (v === null || v === undefined) return NaN; let s = String(v).replace(/R\$\s?/i, "").replace(/\s/g, "").trim(); if (!s) return NaN; if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, ""); return parseBR(s); };
   if (melhor) {
     const h = linhas[melhor.k]; const ci = f => h.findIndex(f);
     const cD = ci(ehDesc), cQ = ci(ehQtd), cV = ci(ehVu), cT = ci(ehTot), cU = ci(ehUm);
+    const cE = ci(s => /^(n[º°o.]*\s*(d[oa]\s*)?)?(nota\s+de\s+)?empenho\b|^ne$/i.test(s)), cDt = ci(s => /^data\b/i.test(s)), cP = ci(s => /^processo/i.test(s)), cPr = ci(s => /^preg/i.test(s)),
+          cR = ci(s => /^requisi/i.test(s)), cNF = ci(s => /^(nf|nf-e|nota\s+fiscal|n\.\s*f)/i.test(s)), cF = ci(s => /fornecedor|credor|favorecido/i.test(s)), cO = ci(s => /^obs/i.test(s));
+    const cel = (r, c) => c >= 0 ? String(r[c] || "").trim() : "";
     for (let k = melhor.k + 1; k < linhas.length; k++) {
-      const r = linhas[k]; const d = (r[cD] || "").trim(); const q = n(r[cQ]); let v = cV >= 0 ? n(r[cV]) : NaN; const t = cT >= 0 ? n(r[cT]) : NaN;
+      const r = linhas[k]; if (r[0] === "§ABA§") break; const d = (r[cD] || "").trim(); const q = n(r[cQ]); let v = cV >= 0 ? n(r[cV]) : NaN; const t = cT >= 0 ? n(r[cT]) : NaN;
       if (!d && !(q > 0)) { if (itens.length) { const vazias = linhas.slice(k, k + 3).every(x => !x.join("").trim()); if (vazias) break; } continue; }
       if (/^(total|subtotal|valor total|soma)/i.test(d)) break;
       if (!d || !(q > 0)) { if (d && itens.length && !(q > 0) && !(t > 0)) itens[itens.length - 1].descricao += " " + d; continue; }
       if (!(v > 0) && t > 0) v = t / q;
-      itens.push({descricao:d.replace(/\s+/g, " "), qtd:Math.round(q), vu:v > 0 ? +v.toFixed(2) : "", unidadeMedida:cU >= 0 && r[cU] && r[cU].length <= 12 ? r[cU].toUpperCase() : "UNIDADE"});
+      itens.push({descricao:d.replace(/\s+/g, " "), qtd:Math.round(q), vu:v > 0 ? +v.toFixed(2) : "", unidadeMedida:cU >= 0 && r[cU] && r[cU].length <= 12 ? r[cU].toUpperCase() : "UNIDADE",
+        _emp:cel(r, cE).replace(/\s+/g, "").toUpperCase(), _data:dataCel(cel(r, cDt)), _proc:cel(r, cP), _preg:cel(r, cPr), _req:cel(r, cR), _nf:cel(r, cNF), _forn:cel(r, cF), _obs:cel(r, cO)});
     }
   }
   // 2) PDF sem tabela clara: linhas "descrição ... qtd [un] valor_unit valor_total"
@@ -2466,10 +2472,56 @@ function interpretarEmpenho(linhas, ehPdf) {
     const re = /^(?:\d{1,4}\s+)?(.{6,}?)\s+(\d{1,6}(?:[.,]\d{1,3})?)\s+(?:(UN|UND|UNID|UNIDADE|PC|PÇ|PEÇA|CX|KIT|JG|JOGO|CJ|CONJ|PAR|M|MT)\.?\s+)?R?\$?\s*([\d.]{1,12},\d{2})\s+R?\$?\s*([\d.]{1,14},\d{2})$/i;
     linhas.map(r => r.join(" ").replace(/\s+/g, " ").trim()).forEach(l => { const m = l.match(re); if (!m) return; const q = parseBR(m[2]), v = parseBR(m[4]), t = parseBR(m[5]); if (q > 0 && v > 0 && Math.abs(q * v - t) <= Math.max(0.05, t * 0.01)) itens.push({descricao:m[1].trim(), qtd:Math.round(q), vu:v, unidadeMedida:(m[3] || "UNIDADE").toUpperCase()}); });
   }
+  // planilha com coluna de empenho: um empenho por número (linhas sem empenho, como inventário, ficam de fora)
+  let grupos = null, semEmpenho = 0;
+  if (itens.length && itens.some(i => i._emp)) {
+    const G = {};
+    itens.forEach(i => { if (!i._emp) { semEmpenho++; return; } const k = i._emp + "|" + (i._nf || ""); const g = G[k] = G[k] || {cab:{numero:i._emp, nf:i._nf || "", processo:"", pregao:"", requisicao:"", fornecedor:"", recebidoEm:"", obs:""}, itens:[]};
+      if (!g.cab.processo && i._proc) g.cab.processo = i._proc; if (!g.cab.pregao && i._preg) g.cab.pregao = i._preg; if (!g.cab.requisicao && i._req) g.cab.requisicao = i._req;
+      if (!g.cab.fornecedor && i._forn) g.cab.fornecedor = i._forn; if (!g.cab.recebidoEm && i._data) g.cab.recebidoEm = i._data; if (!g.cab.obs && i._obs) g.cab.obs = i._obs; g.itens.push(i); });
+    grupos = Object.values(G).sort((a, b) => (a.cab.recebidoEm || "").localeCompare(b.cab.recebidoEm || ""));
+    grupos.forEach(g => { if (!g.cab.recebidoEm) g.cab.recebidoEm = d2i(now()); g.cab.localRecebimento = "Almoxarifado Central"; Object.keys(g.cab).forEach(k => { if (!g.cab[k]) delete g.cab[k]; }); g.cab.recebidoEm = g.cab.recebidoEm || d2i(now()); });
+  }
+  itens.forEach(i => Object.keys(i).forEach(k => { if (k[0] === "_") delete i[k]; }));
   // casa cada item com o catálogo
   itens.forEach(i => { const mt = Object.values(S.items).find(x => normName(x.descricao) === normName(i.descricao)); if (mt) i.materialId = mt.id; });
   Object.keys(cab).forEach(k => { if (!cab[k]) delete cab[k]; });
-  return {cab:{...cab, recebidoEm:d2i(now()), localRecebimento:"Almoxarifado Central"}, itens};
+  return {cab:{...cab, recebidoEm:d2i(now()), localRecebimento:"Almoxarifado Central"}, itens, grupos, semEmpenho};
+}
+function dataCel(v) { // "30/09/2026", "9/30/26", "2026-09-30" → "2026-09-30"
+  v = String(v || "").trim(); let m = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  m = v.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return m[0];
+  m = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/); if (m) return `20${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}`;
+  return "";
+}
+// vários empenhos no mesmo arquivo: o usuário escolhe quais registrar (todos de uma vez ou conferindo um a um)
+function escolherEmpenhos(r) {
+  const G = r.grupos.map((g, k) => ({...g, k, ja:empList().some(e => e.numero === g.cab.numero && (e.nf || "") === (g.cab.nf || ""))}));
+  const sel = new Set(G.filter(g => !g.ja).map(g => g.k));
+  const m = openModal({xl:true, title:`${G.length} empenhos encontrados`, sub:"Arquivo: " + esc(r.arquivo), body:`
+    <p class="ink2" style="margin-top:0">Cada número de empenho vira um registro de recebimento, com os seus itens. Marque os que quer registrar ou abra um para conferir antes.${r.semEmpenho ? ` <b>${plural(r.semEmpenho, "linha sem empenho ficou", "linhas sem empenho ficaram")} de fora</b> (por exemplo, entradas de inventário).` : ""}</p>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th style="width:34px"></th><th>Empenho</th><th>Recebido em</th><th>Itens</th><th style="text-align:right">Bens</th><th style="text-align:right">Valor</th><th>Processo</th><th></th></tr></thead><tbody>
+    ${G.map(g => `<tr><td><input type="checkbox" data-gk="${g.k}" ${sel.has(g.k) ? "checked" : ""} ${g.ja ? "disabled" : ""} aria-label="Registrar empenho ${esc(g.cab.numero)}"></td><td class="num"><b>${esc(g.cab.numero)}</b>${g.cab.nf ? `<div class="small muted">NF ${esc(g.cab.nf)}</div>` : ""}${g.ja ? '<div class="small" style="color:var(--warn-ink)">já registrado</div>' : ""}</td><td>${g.cab.recebidoEm ? fmtD(i2d(g.cab.recebidoEm)) : "—"}</td>
+      <td class="small">${g.itens.map(i => esc(i.descricao)).join("<br>")}</td><td class="num" style="text-align:right">${fmtN(g.itens.reduce((a, i) => a + i.qtd, 0))}</td><td class="num" style="text-align:right">${BRL.format(g.itens.reduce((a, i) => a + i.qtd * (+i.vu || 0), 0))}</td><td class="small num">${esc(g.cab.processo || "")}</td>
+      <td>${g.ja ? "" : `<button class="btn sm" data-gv="${g.k}">Conferir</button>`}</td></tr>`).join("")}</tbody></table></div>
+    <p class="small" id="eg-m" style="margin-top:8px"></p>`,
+    foot:`<button class="btn" data-act="close">Cancelar</button><button class="btn primary" id="eg-go">Registrar selecionados</button>`});
+  const upd = () => { const v = G.filter(g => sel.has(g.k)); $("#eg-go", m).textContent = v.length ? `Registrar ${plural(v.length, "empenho", "empenhos")}` : "Registrar selecionados"; $("#eg-go", m).disabled = !v.length; $("#eg-m", m).textContent = v.length ? `${fmtN(v.reduce((a, g) => a + g.itens.reduce((b, i) => b + i.qtd, 0), 0))} bens entrarão no saldo da reserva.` : ""; };
+  m.addEventListener("change", ev => { const c = ev.target.dataset.gk; if (c !== undefined) { ev.target.checked ? sel.add(+c) : sel.delete(+c); upd(); } });
+  m.addEventListener("click", ev => { const b = ev.target.closest("[data-gv]"); if (!b) return; const g = G[+b.dataset.gv]; closeModal(); formEmpenho({cab:g.cab, itens:g.itens, arquivo:r.arquivo, aviso:{t:`Empenho ${g.cab.numero} lido de ${r.arquivo}`, d:"Confira os itens, as quantidades e os valores antes de registrar."}}); });
+  upd();
+  $("#eg-go", m).onclick = async () => {
+    const v = G.filter(g => sel.has(g.k)); if (!v.length) return; $("#eg-go", m).disabled = true; let ok = 0; const erros = [];
+    for (const g of v) {
+      const dados = {...g.cab, arquivo:r.arquivo, itens:g.itens.map(i => { const mt = i.materialId ? S.items[i.materialId] : null; return {descricao:i.descricao, unidadeMedida:i.unidadeMedida, qtd:i.qtd, vu:+i.vu || 0, materialId:i.materialId || null, categoria:mt ? mt.categoria : guessCat(i.descricao)}; })};
+      try { if (S.mode === "oficial") await SB.rpc("registrar_empenho", {p_papel:R(), p_dados:dados}); else EMP_LOCAL.registrar({p_dados:dados}); ok++; }
+      catch (e) { erros.push(g.cab.numero + ": " + e.message); }
+    }
+    if (S.mode === "oficial") { await sbLoad(true); } else saveDemo();
+    closeModal(); renderShell(); render();
+    if (ok) toast(`${plural(ok, "empenho registrado", "empenhos registrados")}. Os bens já estão no saldo da reserva.`);
+    if (erros.length) toast(erros.join(" · "), true);
+  };
 }
 
 // ---------- dados de demonstração ----------
