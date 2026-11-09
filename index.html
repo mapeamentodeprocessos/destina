@@ -3223,7 +3223,8 @@ function nluPrep() {
   CATS.forEach(add); ORG.list.forEach(u => add(u.name));
   Object.values(NLU_MODELOS).flat().forEach(add); Object.keys(NLU_SIN).forEach(add); Object.values(NLU_SIN).forEach(add); NLU_MESES.forEach(add);
   "HOJE ONTEM SEMANA PASSADA PASSADO ULTIMOS ULTIMAS DIAS MESES ANO ENTREGUE ENTREGUES RESERVA DISPONIVEL DISPONIVEIS PLANO PLANOS EMPENHO EMPENHOS TOMBAMENTO TOMBAMENTOS ASSINATURA ASSINAR".split(" ").forEach(w => V.add(w));
-  NLU.vocab = [...V];
+  "BOM BOA DIA DIAS NOITE NOITES TARDE TARDES OLA OBRIGADO OBRIGADA VALEU AJUDA FAVOR QUERO QUERIA GOSTARIA SABER PRECISO PODE PODERIA MOSTRA MOSTRE DIGA FALA FALE ONDE QUANDO COMO QUANTO QUANTA QUANTOS QUANTAS TUDO NADA ALGO ALGUM ALGUMA COISA COISAS GENTE PESSOAL AGORA SEMPRE NUNCA ONTEM AMANHA CERTO ERRADO MELHOR PIOR MAIOR MENOR PRIMEIRO ULTIMO NOVO NOVOS NOVA NOVAS TEMPO HORA HORAS DESDE ENTRE SOBRE PERGUNTA RESPOSTA OBRIGADA".split(" ").forEach(w => V.add(w));
+  NLU.vocab = [...V].filter(w => w.length > 4 || !NLU_SIN[w]);
   NLU.siglas = new Map(); ORG.list.forEach(u => { const s = normName(uSigla(u)).split("/")[0]; if (s && s.length >= 2 && (!NLU.siglas.has(s) || u.path.length < NLU.siglas.get(s).path.length)) NLU.siglas.set(s, u); });
   // modelos já normalizados + idf das palavras
   const df = {}; let N = 0;
@@ -3296,7 +3297,8 @@ function nluMaterial(n, excl) {
 function nluEntender(q) {
   nluPrep();
   let n = normName(q).replace(/[?!.,;:()"“”]/g, " ").replace(/\s+/g, " ").trim();
-  n = n.replace(/^(OI+|OLA|OPA|BOM DIA|BOA TARDE|BOA NOITE|E AI)\b\s*/, "");
+  n = n.replace(/^(?:(?:OI+|OLA|OPA|E AI|EAI|HELLO|HEY|BOM DIA|BOA TARDE|BOA NOITE|SAUDACOES|PRAZER|TUDO BEM|TUDO BOM|COMO VAI|COMO ESTA|DESTINA|ASSISTENTE)\b\s*)+/, "");
+  if (!n) return {q, n:"", mk:"", ents:{}, intent:null, score:0, rank:[], fixes:[]};
   const cor = nluCorrigir(n); n = cor.n;
   const ents = {}; let mk = " " + n + " ";
   let m;
@@ -3580,7 +3582,7 @@ function localAnswerRegras(q, msg) {
     its.forEach(it => { const x = st[it.id]; if (!x) return; sg += x.saldo; dp += Math.max(0, x.disp); ent += x.ent || 0; val += x.saldo * (it.valorUnitario || 0); });
     return {sg, dp, tram:Math.max(0, sg - dp), ent, val, mats:its.filter(it => st[it.id] && st[it.id].saldo > 0).length}; };
   // 0) cumprimentos, agradecimentos e ajuda
-  const SAUD = /^(OI+|OLA|OPA|E AI|EAI|HELLO|HEY|BOM DIA|BOA TARDE|BOA NOITE|SAUDACOES|PRAZER)\b\s*(TUDO BEM|TUDO BOM|COMO VAI|COMO ESTA)?\s*(DESTINA|ASSISTENTE)?\s*/;
+  const SAUD = /^(?:(?:OI+|OLA|OPA|E AI|EAI|HELLO|HEY|BOM DIA|BOA TARDE|BOA NOITE|SAUDACOES|PRAZER|TUDO BEM|TUDO BOM|COMO VAI|COMO ESTA|DESTINA|ASSISTENTE)\b\s*)+/;
   const sm = n.match(SAUD);
   if (sm) { const resto = n.slice(sm[0].length).trim(); if (resto.split(" ").length >= 2) n = resto; else {
     const k = tIndicadores(), pend = (k.minhas_pendencias || []).length, P = panorama();
