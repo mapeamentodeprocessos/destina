@@ -3243,6 +3243,7 @@ function nluCorrigir(n) {
   const fixes = [];
   const out = n.split(" ").map(w => {
     if (w.length < 4 || /\d/.test(w) || NLU_STOP.has(w) || NLU.setV.has(w) || NLU_SIN[w] || NLU.siglas.has(w)) return w;
+    if (NLU.setV.has(w.replace(/S$/, "")) || NLU.setV.has(w.replace(/ES$/, "")) || NLU.setV.has(w.replace(/IS$/, "L")) || NLU.setV.has(w.replace(/OES$/, "AO")) || NLU.setV.has(w + "S")) return w;
     const max = w.length >= 8 ? 2 : 1; let best = null, bd = max + 1;
     for (const v of NLU.vocab) { if (Math.abs(v.length - w.length) > max || v[0] !== w[0] && w.length < 7) continue; const dd = nluDist(w, v, max); if (dd < bd) { bd = dd; best = v; if (dd === 1 && max === 1) break; } }
     if (best && bd <= max) { fixes.push([w, best]); return best; }
@@ -3274,7 +3275,8 @@ function nluUnidade(n, qOrig) {
   for (const w of n.split(" ")) { const u = NLU.siglas.get(w); if (u && (!AMB.has(w) || up.has(w)) && (w.length >= 3 || up.has(w))) return {u, txt:w}; }
   // 2) nome depois de "para o / do / no / da / pro / ao"
   const m = n.match(/\b(?:PARA|PRA|PRO|DO|DA|NO|NA|AO|A|O|PELO|PELA)\s+(?:O\s+|A\s+)?((?:[A-Z0-9]+\s?){1,6})$/) || n.match(/\b(?:PARA|PRA|PRO|NO|NA|AO|PELO|PELA|DO|DA)\s+(?:O\s+|A\s+)?((?:[A-Z0-9]+\s?){2,6})/);
-  if (m) { let ph = m[1].trim().split(" "); while (ph.length) { const t = ph.join(" "); if (t.length >= 4 && !NLU_STOP.has(t)) { const r = searchUnits(t, 1)[0]; if (r) return {u:r, txt:t}; } ph.pop(); } }
+  const DOM = new Set("RESERVA TECNICA ESTOQUE ALMOXARIFADO SISTEMA DESTINA DEPOSITO GALPAO MES SEMANA ANO HOJE ONTEM TOTAL GERAL PLANO PLANOS EMPENHO EMPENHOS UNIDADE UNIDADES BENS BEM ITENS MATERIAIS VALOR PRAZO ETAPA ENTREGA ENTREGAS ASSINATURA REITORA REITORIA PRO REITOR".split(" "));
+  if (m) { let ph = m[1].trim().split(" "); while (ph.length && (DOM.has(ph[0]) || NLU_STOP.has(ph[0]))) ph.shift(); while (ph.length) { const t = ph.join(" "); if (t.length >= 4 && !ph.every(w => DOM.has(w) || NLU_STOP.has(w))) { const r = searchUnits(t, 1)[0]; if (r && normName(r.name + " " + uSigla(r)).includes(ph[0])) return {u:r, txt:t}; } ph.pop(); } }
   return null;
 }
 function nluMaterial(n, excl) {
@@ -3427,7 +3429,7 @@ function nluResponder(nl, msg) {
       const G = {}; entregas().forEach(p => { const x = G[p.unidade] = G[p.unidade] || {q:0, v:0, n:0}; x.q += planQtd(p); x.v += planTotal(p); x.n++; });
       const R = Object.entries(G).sort((a, b) => b[1].q - a[1].q); if (!R.length) return `Não há entregas ${E.per ? E.per.rot : "registradas"}.`;
       const tot = R.reduce((a, r) => a + r[1].q, 0);
-      linhas.push(`**${esc(R[0][0])}** foi a unidade que mais recebeu ${E.per ? E.per.rot : ""}: ${fmtN(R[0][1].q)} bens (${Math.round(R[0][1].q / tot * 100)}% do total).`);
+      linhas.push(`**${esc(R[0][0])}** foi a unidade que mais recebeu${E.per ? " " + E.per.rot : ""}: ${fmtN(R[0][1].q)} bens (${Math.round(R[0][1].q / tot * 100)}% do total).`);
       linhas.push(lista(R, ([u, x]) => `- ${esc(u)}: ${fmtN(x.q)} bens · ${BRL.format(x.v)} · ${plural(x.n, "entrega")}`, 8));
       return fecha();
     }
