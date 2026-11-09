@@ -544,6 +544,7 @@ const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } ca
 const IC = {
   painel:'<path d="M3 13h8V3H3zM13 21h8V11h-8zM3 21h8v-6H3zM13 3v6h8V3z"/>',
   reserva:'<path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3.3 7.6L12 12.5l8.7-4.9M12 22V12.5"/>',
+  empenhos:'<path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
   planos:'<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/>',
   autorizacoes:'<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
   entregas:'<path d="M1 3h15v13H1zM16 8h4l3 3v5h-7z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>',
@@ -608,7 +609,7 @@ const CFG_DEFAULT = () => ({
 
 // ---------- estado ----------
 const S = {
-  mode:"demo", ready:false, items:{}, plans:{}, sigs:{}, perfis:{}, cfg:CFG_DEFAULT(),
+  mode:"demo", ready:false, items:{}, plans:{}, sigs:{}, perfis:{}, cfg:CFG_DEFAULT(), empenhos:{}, bens:{},
   me:{id:null, name:"", roles:[]}, role:"PATRIMONIO", route:"painel", param:null,
   ui:{q:"", cat:"", sit:"", loc:"", sort:"saldo", dir:-1, planView:"lista", planSt:"ativos", planQ:""},
   officialAvailable:false, officialCfg:null, isOwner:false, canEdit:false, offline:false
@@ -794,7 +795,7 @@ async function persistSig(rec) {
   try { await queueWrite("assinaturas/" + uid, () => CAP.db.doc("assinaturas/" + uid).set(mine)); return true; } catch (e) { handleDbError(e); return false; }
 }
 function handleDbError(e) { toast((e && e.message) || "Não foi possível gravar agora. Tente novamente.", true); }
-function saveDemo() { lsSet(DEMO_KEY, {items:S.items, plans:S.plans, cfg:S.cfg, sigs:S.sigs, alog:S.alog || [], orgCustom:S.orgCustom || null, v:2}); }
+function saveDemo() { lsSet(DEMO_KEY, {items:S.items, plans:S.plans, cfg:S.cfg, sigs:S.sigs, alog:S.alog || [], orgCustom:S.orgCustom || null, empenhos:S.empenhos || {}, bens:S.bens || {}, v:2}); }
 
 // ---------- eventos com cadeia de hash ----------
 async function addEvent(p, tipo, msg, extra = {}) {
@@ -922,7 +923,7 @@ async function seedDemo() {
     S.plans[id] = p;
   }
   for (const p of Object.values(S.plans)) { const mu = matchUnit(p.unidade); if (mu) { p.unidade = mu.name; p.unidadeCode = mu.code; } }
-  saveDemo();
+  seedEmpenhosDemo(); saveDemo();
 }
 async function demoSign(p, role, t) {
   const by = role === "PRA" ? "u_pra" : "u_reit";
@@ -1001,7 +1002,8 @@ async function sbLoad(force) {
     SB.req("config?id=eq.1&select=dados,atualizado_em"), q("perfis", "select=id,nome,email,papeis,aprovado,criado_em&order=criado_em"), q("materiais", "select=*&order=criado_em"), q("lotes", "select=*&order=data"),
     q("planos", "select=*&order=criado_em"), q("plano_itens", "select=*"), q("plano_etapas", "select=plano_id,status,em&order=id"), q("eventos", "select=*&order=id"),
     q("assinaturas", "select=*"), q("entregas", "select=*"), q("tombamentos", "select=*"), SB.req("log_assistente?select=*&order=em.desc&limit=300"), SB.req("estrutura_meta?select=*")]);
-  const sig = JSON.stringify([cfg[0] && cfg[0].atualizado_em, perfis.map(p => p.id + p.papeis.join() + p.aprovado + p.nome).join(), mats.length, mats.reduce((a, m) => a > m.atualizado_em ? a : m.atualizado_em, ""), lotes.length, planos.length, evs.length && evs[evs.length - 1].id, logs.length && logs[0].id, meta[0] && meta[0].atualizado_em, tombs.length]);
+  const [emps, eits, bens] = await Promise.all([q("empenhos", "select=*&order=recebido_em").catch(() => []), q("empenho_itens", "select=*&order=seq").catch(() => []), q("bens", "select=*").catch(() => [])]);
+  const sig = JSON.stringify([cfg[0] && cfg[0].atualizado_em, perfis.map(p => p.id + p.papeis.join() + p.aprovado + p.nome).join(), mats.length, mats.reduce((a, m) => a > m.atualizado_em ? a : m.atualizado_em, ""), lotes.length, planos.length, evs.length && evs[evs.length - 1].id, logs.length && logs[0].id, meta[0] && meta[0].atualizado_em, tombs.length, emps.length, emps.reduce((a, e) => a > e.atualizado_em ? a : e.atualizado_em, ""), bens.length]);
   if (!force && sig === SBSIG) return false; SBSIG = sig;
   if (cfg[0]) S.cfg = {...CFG_DEFAULT(), ...cfg[0].dados};
   S.perfisList = perfis; S.perfis = {}; perfis.forEach(p => { NAMES[p.id] = p.nome || p.email || "Usuário"; if (p.aprovado) S.perfis[p.id] = p.papeis; });
@@ -1026,6 +1028,10 @@ async function sbLoad(force) {
       entrega:en ? {data:ms(en.data), recebedor:en.recebedor, siape:en.siape, cargo:en.cargo, local:en.local, registradoPor:en.registrado_por, tombamentos:T[p.id] || {}} : null};
     Object.values(plans[p.id].assinaturas).forEach(a => a.numero = p.numero); });
   S.items = items; S.plans = plans;
+  const EM = {}; emps.forEach(e => EM[e.id] = {id:e.id, numero:e.numero, nf:e.nf, nfData:dms(e.nf_data), dataEmpenho:dms(e.data_empenho), fornecedor:e.fornecedor, cnpj:e.cnpj, processo:e.processo, pregao:e.pregao, requisicao:e.requisicao, recebidoEm:dms(e.recebido_em), local:e.local_recebimento, situacao:e.situacao, encaminhadoEm:dms(e.encaminhado_dipa_em), emplData:dms(e.emplaquetamento_data), emplEm:dms(e.emplaquetado_em), obs:e.obs, arquivo:e.arquivo, historico:e.historico || [], criadoPor:e.criado_por, criadoEm:ms(e.criado_em), itens:[]});
+  const EI = {}; eits.forEach(i => { const x = {id:i.id, seq:i.seq, descricao:i.descricao, unidadeMedida:i.unidade_medida, qtd:i.qtd, vu:+i.vu, materialId:i.material_id, loteId:i.lote_id, empenhoId:i.empenho_id}; EI[i.id] = x; if (EM[i.empenho_id]) EM[i.empenho_id].itens.push(x); });
+  const BE = {}; bens.forEach(b => { const it = EI[b.empenho_item_id]; BE[b.numero] = {numero:b.numero, itemId:b.empenho_item_id, empenhoId:it ? it.empenhoId : null, materialId:b.material_id, situacao:b.situacao, planoId:b.plano_id, geradoPor:b.gerado_por, geradoEm:ms(b.gerado_em), entregueEm:ms(b.entregue_em)}; });
+  S.empenhos = EM; S.bens = BE;
   S.alog = logs.map(l => ({at:ms(l.em), by:l.por, role:l.papel, tipo:l.tipo, texto:l.texto, acao:l.acao}));
   const mk = meta[0] ? JSON.stringify(meta[0]) : "";
   if (mk && S.orgMetaKey !== mk) { const us = await q("unidades", "select=code,name,parent_code&order=ordem"); if (us.length) { loadOrg(us.map(u => [u.code, u.name, u.parent_code || ""]), {fonte:meta[0].fonte, atualizadoEm:meta[0].atualizado_em}); S.orgMetaKey = mk; } }
@@ -1114,6 +1120,7 @@ async function boot() {
   const saved = lsGet(DEMO_KEY);
   if (saved && saved.v === 2 && saved.items && Object.keys(saved.items).length) {
     S.items = saved.items; S.plans = saved.plans || {}; S.cfg = {...CFG_DEFAULT(), ...(saved.cfg || {})}; S.sigs = saved.sigs || {}; S.alog = saved.alog || []; if (saved.orgCustom) { S.orgCustom = saved.orgCustom; loadOrg(saved.orgCustom.u, saved.orgCustom); }
+    if (saved.empenhos) { S.empenhos = saved.empenhos; S.bens = saved.bens || {}; } else { seedEmpenhosDemo(); saveDemo(); }
   } else {
     S.cfg = CFG_DEFAULT();
     S.cfg.signatarios = {PRA:{nome:"Prof. Ricardo Albuquerque", cargo:"Pró-Reitor de Administração"}, REITORIA:{nome:"Prof.ª Helena Cavalcanti", cargo:"Reitora"}};
@@ -1163,7 +1170,7 @@ function leaveToDemo() {
   lsSet("destina_mode", "demo");
   S.mode = "demo";
   const saved = lsGet(DEMO_KEY);
-  loadOrgDefault(); if (saved) { S.items = saved.items; S.plans = saved.plans; S.cfg = {...CFG_DEFAULT(), ...saved.cfg}; S.sigs = saved.sigs || {}; S.alog = saved.alog || []; if (saved.orgCustom) { S.orgCustom = saved.orgCustom; loadOrg(saved.orgCustom.u, saved.orgCustom); } }
+  loadOrgDefault(); if (saved) { S.items = saved.items; S.plans = saved.plans; S.cfg = {...CFG_DEFAULT(), ...saved.cfg}; S.sigs = saved.sigs || {}; S.alog = saved.alog || []; if (saved.orgCustom) { S.orgCustom = saved.orgCustom; loadOrg(saved.orgCustom.u, saved.orgCustom); } if (saved.empenhos) { S.empenhos = saved.empenhos; S.bens = saved.bens || {}; } else seedEmpenhosDemo(); }
   enterDemoPersona(lsGet("destina_persona") || "u_pat", true);
   renderShell(); render();
   toast("Você está no ambiente de demonstração.");
@@ -1175,6 +1182,7 @@ function scheduleRender() { if (rq) return; rq = requestAnimationFrame(() => { r
 const NAV = [
   {k:"painel", l:"Painel", roles:null},
   {k:"reserva", l:"Reserva técnica", roles:null},
+  {k:"empenhos", l:"Empenhos e tombamento", roles:null},
   {k:"planos", l:"Planos de destinação", roles:null},
   {k:"autorizacoes", l:"Autorizações", roles:["REITORIA","PRA","ADMIN","FORMALIZACAO","CONSULTA"]},
   {k:"entregas", l:"Separação e entrega", roles:["ALMOXARIFADO","PATRIMONIO","ADMIN","CONSULTA"]},
@@ -1196,6 +1204,7 @@ const navCount = k => {
   if (k === "autorizacoes") return Object.values(S.plans).filter(p => can.sign(p)).length;
   if (k === "entregas") return Object.values(S.plans).filter(p => (p.status === "AUTORIZADO" || p.status === "SEPARACAO") && can.separate() || p.status === "PRONTO" && can.deliver()).length;
   if (k === "planos") return Object.values(S.plans).filter(p => p.status === "INSTRUCAO" && can.formalize()).length;
+  if (k === "empenhos") return empList().filter(e => e.situacao === "RECEBIDO" && R() === "ALMOXARIFADO" || empCanTombar() && (e.situacao === "NA_DIPA" || e.situacao === "TOMBADO" || e.situacao === "EMPLAQUETAMENTO_AGENDADO" && e.emplData && e.emplData <= now() + DAY)).length;
   if (k === "monitoramento") return 0;
   return 0;
 };
@@ -1243,8 +1252,9 @@ function render() {
   if (S.mode === "oficial" && !S.role) { v.innerHTML = vSemPerfil(); return; }
   const nav = NAV.find(n => n.k === S.route);
   if (nav && nav.roles && !nav.roles.includes(R())) { S.route = "painel"; }
-  const views = {painel:vPainel, reserva:vReserva, planos:vPlanos, plano:vPlano, autorizacoes:vAutorizacoes, entregas:vEntregas, monitoramento:vMonitoramento, documentos:vDocumentos, configuracoes:vConfig};
+  const views = {painel:vPainel, reserva:vReserva, empenhos:vEmpenhos, planos:vPlanos, plano:vPlano, autorizacoes:vAutorizacoes, entregas:vEntregas, monitoramento:vMonitoramento, documentos:vDocumentos, configuracoes:vConfig};
   v.innerHTML = (views[S.route] || vPainel)();
+  if (S.route === "empenhos") montarEmpenhos();
   if (S.route === "configuracoes") { mountOrgBrowser(); if (S.mode === "oficial") sbCarregarExternos(); }
   if (S.mode === "oficial") resolveNames(collectIds());
   document.title = (S.route === "plano" ? "Plano" : (nav ? nav.l : "Painel")) + " — Destina " + S.cfg.sigla;
@@ -1446,6 +1456,9 @@ function openItem(id) {
     <table class="tbl"><tbody>
       ${[["Valor unitário médio", it.semValor ? "Não informado" : BRL.format(it.valorUnitario) + (it.valorParcial ? " (há entradas sem valor)" : "")], ["Marca / modelo", [it.marca, it.modelo].filter(Boolean).join(" / ") || "—"], ["Fornecedor", it.fornecedor], ["Exige tombamento", it.exigeTombamento ? "Sim" : "Não"], ["Observações", it.obs || "—"]].map(([a, b]) => `<tr><td class="muted" style="width:42%">${a}</td><td>${esc(b || "—")}</td></tr>`).join("")}
     </tbody></table>
+    ${(() => { const bs = Object.values(S.bens || {}).filter(b => b.materialId === id); if (!bs.length) return ""; const res = bs.filter(b => b.situacao === "EM_RESERVA").sort((x, y) => x.numero.localeCompare(y.numero, "pt-BR", {numeric:true})); const porEmp = {}; res.forEach(b => (porEmp[b.empenhoId] = porEmp[b.empenhoId] || []).push(b.numero));
+      return `<hr><div class="row"><h3>Tombamentos na reserva</h3><span class="sp"></span><span class="small muted">${fmtN(res.length)} na reserva · ${fmtN(bs.length - res.length)} entregues</span></div>
+      ${res.length ? `<div class="small" style="margin-top:8px">${Object.entries(porEmp).map(([eid, ns]) => { const e = S.empenhos[eid]; return `<div style="padding:6px 0;border-bottom:1px solid var(--line-2)"><a href="#" data-act="emp-abrir" data-id="${eid}"><b>${esc(e ? e.numero : "Empenho")}</b>${e && e.nf ? " · NF " + esc(e.nf) : ""}</a> <span class="muted">(${fmtN(ns.length)})</span><div class="num">${esc(faixas(ns))}</div></div>`; }).join("")}</div>` : '<p class="small muted" style="margin-top:6px">Todos os bens tombados deste material já foram entregues.</p>'}`; })()}
     <hr><h3 style="margin-bottom:8px">Destinações deste material</h3>
     ${plans.length ? plans.map(p => { const li = p.itens.find(x => x.itemId === id); return `<div class="li" style="grid-template-columns:1fr auto;padding:10px 0" data-act="plan" data-id="${p.id}"><div><b>${esc(p.numero)}</b> · <span class="ink2">${esc(p.unidade)}</span></div><div class="row"><span class="num">${fmtN(li.qtd)} un.</span>${p.legado ? '<span class="pill">Histórico</span>' : stPill(p.status)}</div></div>`; }).join("") : '<p class="muted">Este material ainda não foi destinado.</p>'}`,
     foot:`${can.editItems() ? `<button class="btn danger" data-act="del-item" data-id="${id}" ${plans.length ? "disabled title='Material já usado em destinações'" : ""}>Excluir</button><span class="sp"></span><button class="btn" data-act="edit-item" data-id="${id}">Editar cadastro</button>` : '<span class="sp"></span>'}${can.createPlan() && s.disp > 0 ? `<button class="btn primary" data-act="new-plan" data-item="${id}">Destinar este material</button>` : ""}`});
@@ -2080,6 +2093,7 @@ function act_deliver(id) {
   const p0 = S.plans[id]; const used = usedTombs(id);
   const tomb = {}; p0.itens.forEach(li => { const it = S.items[li.itemId]; if (!it || it.exigeTombamento !== false) tomb[li.itemId] = Array(li.qtd).fill(""); });
   const needT = Object.keys(tomb).length > 0;
+  const resT = needT ? p0.itens.filter(li => tomb[li.itemId]).map(li => { const n = bensEmReserva(li.itemId).length; return n ? `${esc(li.descricao)}: ${fmtN(n)} disponíveis (precisa de ${fmtN(li.qtd)})` : ""; }).filter(Boolean).join(" · ") : "";
   const m = openModal({xl:true, title:"Registrar entrega · " + esc(p0.numero), body:`
     <div class="form-grid">
       <div class="field"><label>Recebedor (responsável na unidade)</label><input class="inp" id="rec" placeholder="Nome completo"></div>
@@ -2088,7 +2102,7 @@ function act_deliver(id) {
       <div class="field"><label>Local de instalação</label><input class="inp" id="local" placeholder="Bloco, sala ou ambiente"></div>
       <div class="field"><label>Data da entrega</label><input class="inp" id="dt" type="date" value="${new Date().toISOString().slice(0, 10)}"></div>
     </div>
-    ${needT ? `<hr><div class="row wrap"><div><h3>Números de tombamento</h3><p class="small muted">Um número por unidade física. Digite o primeiro número de uma sequência e o sistema preenche o restante.</p></div><span class="sp"></span><div class="row"><input class="inp num" id="seq0" placeholder="Nº inicial" style="width:140px" inputmode="numeric"><button class="btn" id="seqgo">Preencher sequência</button></div></div>
+    ${needT ? `<hr><div class="row wrap"><div><h3>Números de tombamento</h3><p class="small muted">Um número por unidade física. Digite o primeiro número de uma sequência e o sistema preenche o restante.</p></div><span class="sp"></span><div class="row"><input class="inp num" id="seq0" placeholder="Nº inicial" style="width:140px" inputmode="numeric"><button class="btn" id="seqgo">Preencher sequência</button></div></div>${resT ? `<div class="alert" style="margin-top:10px"><div class="ic">${ic("empenhos")}</div><div style="flex:1"><b>Há bens tombados na reserva para este plano</b><p>${esc(resT)}</p></div><button class="btn sm primary" id="usar-res" style="align-self:center">Usar tombamentos da reserva</button></div>` : ""}
     <div id="tombs"></div><p id="tmsg" class="small" style="margin-top:8px"></p>` : ""}`,
     foot:`<button class="btn" data-act="close">Cancelar</button><button class="btn accent" id="go">${ic("check")}Confirmar entrega e gerar termo</button>`});
   const drawT = () => {
@@ -2102,6 +2116,7 @@ function act_deliver(id) {
   };
   m.addEventListener("input", e => { if (e.target.dataset.t) { tomb[e.target.dataset.t][+e.target.dataset.i] = e.target.value; clearTimeout(m._t); m._t = setTimeout(() => { const pos = e.target.dataset.t + "_" + e.target.dataset.i; drawT(); const el = m.querySelector(`[data-t="${e.target.dataset.t}"][data-i="${e.target.dataset.i}"]`); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 500); } });
   if (needT) $("#seqgo", m).onclick = () => { const s0 = $("#seq0").value.trim(); if (!/^\d+$/.test(s0)) { toast("Digite um número inicial só com algarismos.", true); return; } let n = BigInt(s0); const w = s0.length; for (const li of p0.itens) { if (!tomb[li.itemId]) continue; tomb[li.itemId] = tomb[li.itemId].map(() => { const v = String(n).padStart(w, "0"); n++; return v; }); } drawT(); };
+  if ($("#usar-res", m)) $("#usar-res", m).onclick = () => { let n = 0; for (const li of p0.itens) { if (!tomb[li.itemId]) continue; const bs = bensEmReserva(li.itemId).map(b => b.numero).filter(x => !used.has(x)); tomb[li.itemId] = tomb[li.itemId].map((v, k) => bs[k] || v); n += Math.min(bs.length, li.qtd); } drawT(); toast(plural(n, "número preenchido", "números preenchidos") + " com os tombamentos mais antigos da reserva. Confira as plaquetas na separação."); };
   drawT();
   $("#go", m).onclick = async () => {
     const rec = $("#rec").value.trim(), siape = $("#siape").value.trim();
@@ -2117,11 +2132,363 @@ function act_deliver(id) {
       if (ok) { closeModal(); setTimeout(() => openDoc(id, "ent"), 250); }
       return;
     }
+    const tbx = Object.fromEntries(Object.entries(tomb).map(([k, a]) => [k, a.map(x => x.trim())]));
+    try { empBaixarLocal(id, tbx); } catch (err) { toast(err.message, true); return; }
     const p = clone(S.plans[id]);
     p.entrega = {data:dt, recebedor:rec, siape, cargo:$("#cargo").value.trim() || "Responsável pela unidade", local:$("#local").value.trim() || "Sede da unidade", tombamentos:Object.fromEntries(Object.entries(tomb).map(([k, a]) => [k, a.map(x => x.trim())])), registradoPor:S.me.id};
     setStatus(p, "ENTREGUE"); await addEvent(p, "entrega", "Entrega registrada · Recebedor " + rec + " · " + plural(planQtd(p), "bem", "bens") + (needT ? " tombados" : ""));
     if (await persist("planos", id, p)) { closeModal(); toast("Entrega registrada. Termo de responsabilidade gerado."); renderShell(); render(); setTimeout(() => openDoc(id, "ent"), 250); }
   };
+}
+
+// ---------- EMPENHOS E TOMBAMENTO ----------
+// Fluxo: Almoxarifado recebe e registra o empenho (manual ou arquivo) → itens entram no saldo → processo vai à DIPA →
+// DIPA gera os tombamentos → agenda e conclui o emplaquetamento. Na entrega, os números baixam os bens da reserva.
+const EMP_ST = {
+  RECEBIDO:{l:"Recebido no Almoxarifado", s:"Aguardando envio à DIPA", c:"info"},
+  NA_DIPA:{l:"Aguardando tombamento", s:"Processo na DIPA", c:"warn"},
+  TOMBADO:{l:"Tombado", s:"Aguardando emplaquetamento", c:"serious"},
+  EMPLAQUETAMENTO_AGENDADO:{l:"Emplaquetamento agendado", s:"", c:"serious"},
+  EMPLAQUETADO:{l:"Emplaquetado", s:"Concluído", c:"good"}
+};
+const empPill = st => { const x = EMP_ST[st] || {l:st, c:""}; const col = {info:"color:var(--brand-2);background:var(--brand-soft)", warn:"color:var(--warn-ink);background:var(--warn-soft)", serious:"color:var(--serious-ink);background:var(--serious-soft)", good:"color:var(--good-ink);background:var(--good-soft)"}[x.c] || ""; return `<span class="pill" style="${col}"><i></i>${esc(x.l)}</span>`; };
+const empCanReceber = () => ["ALMOXARIFADO", "PATRIMONIO", "ADMIN"].includes(R());
+const empCanTombar = () => ["PATRIMONIO", "ADMIN"].includes(R());
+const empList = () => Object.values(S.empenhos || {});
+const empBens = e => Object.values(S.bens || {}).filter(b => b.empenhoId === e.id);
+const itemBens = it => Object.values(S.bens || {}).filter(b => b.itemId === it.id).sort((a, b) => a.numero.localeCompare(b.numero, "pt-BR", {numeric:true}));
+const empQtd = e => (e.itens || []).reduce((a, i) => a + i.qtd, 0);
+const empValor = e => (e.itens || []).reduce((a, i) => a + i.qtd * (i.vu || 0), 0);
+const bensEmReserva = matId => Object.values(S.bens || {}).filter(b => b.materialId === matId && b.situacao === "EM_RESERVA").sort((a, b) => a.numero.localeCompare(b.numero, "pt-BR", {numeric:true}));
+function faixas(nums) { // ["000150","000151","000152","900001"] → "000150 a 000152, 900001"
+  const out = []; let ini = null, prev = null;
+  const fecha = () => { if (ini !== null) out.push(ini === prev ? ini : ini + " a " + prev); };
+  for (const n of nums) { if (prev !== null && /^\d+$/.test(n) && /^\d+$/.test(prev) && n.length === prev.length && BigInt(n) === BigInt(prev) + 1n) { prev = n; continue; } fecha(); ini = n; prev = n; }
+  fecha(); return out.join(", ");
+}
+const proxNumero = (ini, k) => { if (!/^\d+$/.test(ini || "")) return ""; return (BigInt(ini) + BigInt(k)).toString().padStart(ini.length, "0"); };
+
+// ---------- operações: oficial (banco) ou demonstração (local) ----------
+const EMP_RPC = {registrar:"registrar_empenho", encaminhar:"encaminhar_empenho_dipa", tombar:"tombar_empenho", agendar:"agendar_emplaquetamento", concluir:"concluir_emplaquetamento", excluir:"excluir_empenho"};
+async function empDo(op, args, okMsg) {
+  if (S.mode === "oficial") return sbDo(EMP_RPC[op], {p_papel:R(), ...args}, okMsg);
+  try { const r = EMP_LOCAL[op](args); saveDemo(); renderShell(); render(); if (okMsg) toast(okMsg); return r === undefined ? true : r; }
+  catch (e) { toast(e.message, true); return false; }
+}
+const empHist = (e, t) => { e.historico = e.historico || []; e.historico.push({em:now(), por:S.me.id, papel:R(), texto:t}); };
+const EMP_LOCAL = {
+  registrar({p_dados:d}) {
+    const num = String(d.numero || "").replace(/\s+/g, "").toUpperCase(), nf = String(d.nf || "").trim();
+    if (!num) throw new Error("Informe o número do empenho.");
+    if (!(d.itens || []).length) throw new Error("O empenho precisa ter pelo menos um item.");
+    if (empList().some(e => e.numero === num && e.nf === nf)) throw new Error(`O empenho ${num} ${nf ? "com a NF " + nf : "(sem NF)"} já foi registrado.`);
+    const e = {id:"em" + rid(10), numero:num, nf, nfData:d.nfData ? i2d(d.nfData) : null, dataEmpenho:d.dataEmpenho ? i2d(d.dataEmpenho) : null, fornecedor:(d.fornecedor || "").trim(), cnpj:(d.cnpj || "").trim(), processo:(d.processo || "").trim(), pregao:(d.pregao || "").trim(), requisicao:(d.requisicao || "").trim(), recebidoEm:d.recebidoEm ? i2d(d.recebidoEm) : now(), local:d.localRecebimento || "Almoxarifado Central", situacao:"RECEBIDO", obs:d.obs || "", arquivo:d.arquivo || "", historico:[], criadoPor:S.me.id, criadoEm:now(), itens:[]};
+    d.itens.forEach((x, k) => {
+      const desc = String(x.descricao || "").trim(), q = Math.round(+x.qtd || 0);
+      if (!desc) throw new Error(`Item ${k + 1} sem descrição.`); if (q <= 0) throw new Error(`Item ${k + 1} ("${desc.slice(0, 40)}") sem quantidade.`);
+      let it = x.materialId ? S.items[x.materialId] : Object.values(S.items).find(m => normName(m.descricao) === normName(desc));
+      it = it ? clone(it) : {id:"it" + rid(10), codigo:"RT-" + new Date().getFullYear() + "-" + rid(4).toUpperCase(), descricao:desc, categoria:x.categoria || guessCat(desc), unidadeMedida:x.unidadeMedida || "UNIDADE", fornecedor:e.fornecedor, exigeTombamento:true, criadoEm:now(), lotes:[]};
+      if (!it.lotes || !it.lotes.length) it.lotes = (S.items[it.id] ? lotsOf(it) : []).map(l => ({...l}));
+      const lote = {id:"l" + rid(6), data:e.recebidoEm, qtd:q, vu:+(+x.vu || 0).toFixed(2), pregao:e.pregao, requisicao:e.requisicao, empenho:num, processo:e.processo, nf, obs:"", origem:"empenho"};
+      it.lotes.push(lote); S.items[it.id] = syncItem(it);
+      e.itens.push({id:"ei" + rid(8), seq:k + 1, descricao:desc, unidadeMedida:x.unidadeMedida || "UNIDADE", qtd:q, vu:+(+x.vu || 0), materialId:it.id, loteId:lote.id});
+    });
+    empHist(e, "Recebimento registrado · " + plural(e.itens.length, "item", "itens") + (e.arquivo ? " · importado de " + e.arquivo : ""));
+    S.empenhos[e.id] = e; return e.id;
+  },
+  encaminhar({p_id}) { const e = S.empenhos[p_id]; if (!e || e.situacao !== "RECEBIDO") throw new Error("Este empenho não está aguardando encaminhamento."); e.situacao = "NA_DIPA"; e.encaminhadoEm = now(); empHist(e, "Processo de pagamento encaminhado à Divisão de Patrimônio"); },
+  tombar({p_id, p_faixas}) {
+    if (!empCanTombar()) throw new Error(`O perfil "${R()}" não pode executar esta ação.`);
+    const e = S.empenhos[p_id]; if (!e) throw new Error("Empenho não encontrado.");
+    if (!["RECEBIDO", "NA_DIPA", "TOMBADO"].includes(e.situacao)) throw new Error("Os tombamentos deste empenho já foram concluídos.");
+    const usados = new Set([...Object.keys(S.bens), ...Object.values(S.plans).flatMap(p => p.entrega && p.entrega.tombamentos ? Object.values(p.entrega.tombamentos).flat() : [])]);
+    let tot = 0; const novos = [];
+    for (const i of e.itens) {
+      const v = p_faixas[i.id]; if (v === undefined || v === null || v === "") continue;
+      const falta = i.qtd - itemBens(i).length; if (falta <= 0) throw new Error(`O item ${i.seq} já está todo tombado.`);
+      let nums;
+      if (Array.isArray(v)) { nums = v.map(x => String(x).trim()).filter(Boolean); if (nums.length !== falta) throw new Error(`Item ${i.seq}: informe ${falta} número(s) de tombamento (recebidos: ${nums.length}).`); }
+      else { const ini = String(v).replace(/\s/g, ""); if (!/^\d{1,15}$/.test(ini)) throw new Error(`Item ${i.seq}: o tombamento inicial deve ter só números.`); nums = Array.from({length:falta}, (_, k) => proxNumero(ini, k)); }
+      if (new Set(nums).size !== nums.length) throw new Error(`Item ${i.seq}: há números repetidos na lista.`);
+      const dup = nums.find(n => usados.has(n) || novos.some(b => b.numero === n)); if (dup) throw new Error(`O tombamento ${dup} já existe no sistema (item ${i.seq}).`);
+      nums.forEach(n => novos.push({numero:n, itemId:i.id, empenhoId:e.id, materialId:i.materialId, situacao:"EM_RESERVA", planoId:null, geradoPor:S.me.id, geradoEm:now()}));
+      tot += nums.length;
+    }
+    if (!tot) throw new Error("Informe o tombamento inicial de pelo menos um item.");
+    novos.forEach(b => S.bens[b.numero] = b);
+    const completo = e.itens.every(i => itemBens(i).length >= i.qtd);
+    e.situacao = completo ? "TOMBADO" : "NA_DIPA"; e.encaminhadoEm = e.encaminhadoEm || now();
+    empHist(e, plural(tot, "tombamento gerado", "tombamentos gerados") + (completo ? " · empenho todo tombado" : " · faltam itens")); return tot;
+  },
+  agendar({p_id, p_data, p_obs}) { const e = S.empenhos[p_id]; if (!p_data) throw new Error("Informe a data do emplaquetamento."); if (!e || !["TOMBADO", "EMPLAQUETAMENTO_AGENDADO"].includes(e.situacao)) throw new Error("Gere todos os tombamentos antes de agendar o emplaquetamento."); e.situacao = "EMPLAQUETAMENTO_AGENDADO"; e.emplData = i2d(p_data); empHist(e, "Emplaquetamento agendado para " + fmtD(e.emplData) + (p_obs ? " · " + p_obs : "")); },
+  concluir({p_id, p_data}) { const e = S.empenhos[p_id]; if (!e || !["TOMBADO", "EMPLAQUETAMENTO_AGENDADO"].includes(e.situacao)) throw new Error("Gere todos os tombamentos antes de concluir o emplaquetamento."); e.situacao = "EMPLAQUETADO"; e.emplEm = p_data ? i2d(p_data) : now(); empHist(e, "Emplaquetamento concluído em " + fmtD(e.emplEm)); },
+  excluir({p_id}) {
+    const e = S.empenhos[p_id]; if (!e) return;
+    if (empBens(e).some(b => b.situacao !== "EM_RESERVA")) throw new Error("Há bens deste empenho já entregues. Não é possível excluir.");
+    const st = computeStock();
+    for (const i of e.itens) if ((st[i.materialId] || {disp:0}).disp < i.qtd) throw new Error(`Parte de "${i.descricao}" já está em planos de destinação. Ajuste os planos antes de excluir.`);
+    for (const i of e.itens) { const it = clone(S.items[i.materialId]); if (it) { it.lotes = lotsOf(it).filter(l => l.id !== i.loteId); S.items[it.id] = syncItem(it); } }
+    empBens(e).forEach(b => delete S.bens[b.numero]); delete S.empenhos[p_id];
+  }
+};
+// baixa local dos bens na entrega (demonstração); no oficial, o banco faz isso
+function empBaixarLocal(planoId, tombs) {
+  for (const [matId, arr] of Object.entries(tombs || {})) for (const n of arr) {
+    const b = S.bens[n]; if (!b) continue;
+    if (b.materialId !== matId) throw new Error(`O tombamento ${n} pertence a outro material da reserva.`);
+    if (b.situacao !== "EM_RESERVA") throw new Error(`O tombamento ${n} já foi entregue.`);
+  }
+  for (const arr of Object.values(tombs || {})) for (const n of arr) { const b = S.bens[n]; if (b) { b.situacao = "ENTREGUE"; b.planoId = planoId; b.entregueEm = now(); } }
+}
+
+// ---------- tela ----------
+function vEmpenhos() {
+  const u = S.ui; u.empSt = u.empSt || "pendentes"; u.empQ = u.empQ || "";
+  let L = empList().sort((a, b) => (b.recebidoEm || 0) - (a.recebidoEm || 0));
+  const aguardTomb = L.filter(e => e.situacao === "RECEBIDO" || e.situacao === "NA_DIPA"), aguardEmpl = L.filter(e => e.situacao === "TOMBADO" || e.situacao === "EMPLAQUETAMENTO_AGENDADO");
+  const bensRes = Object.values(S.bens || {}).filter(b => b.situacao === "EM_RESERVA").length;
+  if (u.empSt === "pendentes") L = L.filter(e => e.situacao !== "EMPLAQUETADO"); else if (u.empSt !== "todos") L = L.filter(e => e.situacao === u.empSt);
+  const q = normName(u.empQ);
+  if (q) L = L.filter(e => normName([e.numero, e.nf, e.fornecedor, e.cnpj, e.processo, e.pregao, ...(e.itens || []).map(i => i.descricao), ...empBens(e).map(b => b.numero)].join(" ")).includes(q));
+  const segs = [["pendentes", "Em andamento"], ["NA_DIPA", "Aguardando tombamento"], ["TOMBADO", "Aguardando emplaquetamento"], ["EMPLAQUETADO", "Emplaquetados"], ["todos", "Todos"]];
+  return `<div class="page-h"><div><h1>Empenhos e tombamento</h1><p>Recebimento por empenho no Almoxarifado, geração dos tombamentos pela DIPA e emplaquetamento. Cada bem tombado fica rastreável até a entrega.</p></div>
+    ${empCanReceber() ? `<div class="row wrap" style="gap:8px"><button class="btn" data-act="emp-import">${ic("up")}Importar arquivo</button><button class="btn primary" data-act="emp-novo">${ic("plus")}Registrar empenho</button></div>` : ""}</div>
+  <div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:16px">
+    <div class="card kpi"><div class="l">Aguardando tombamento</div><div class="v">${fmtN(aguardTomb.length)}</div><div class="d">${fmtN(aguardTomb.reduce((a, e) => a + empQtd(e) - empBens(e).length, 0))} bens sem número</div></div>
+    <div class="card kpi"><div class="l">Aguardando emplaquetamento</div><div class="v">${fmtN(aguardEmpl.length)}</div><div class="d">${aguardEmpl.filter(e => e.situacao === "EMPLAQUETAMENTO_AGENDADO").length} com data marcada</div></div>
+    <div class="card kpi"><div class="l">Bens tombados na reserva</div><div class="v">${fmtN(bensRes)}</div><div class="d">prontos para destinar com número</div></div>
+  </div>
+  <div class="row wrap" style="gap:10px;margin-bottom:12px"><div class="seg" role="group">${segs.map(([k, l]) => `<button aria-pressed="${u.empSt === k}" data-act="emp-st" data-id="${k}">${l}</button>`).join("")}</div><span class="sp"></span>
+    <input class="inp" id="emp-q" type="search" placeholder="Empenho, NF, fornecedor, item ou nº de tombamento" value="${esc(u.empQ)}" style="min-width:260px;flex:1;max-width:420px" aria-label="Buscar empenhos"></div>
+  ${L.length ? `<div class="card"><div class="list">${L.map(e => { const nb = empBens(e).length, nq = empQtd(e); return `<div class="li" style="grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) auto" data-act="emp-abrir" data-id="${e.id}">
+      <div class="it-t"><b class="num">${esc(e.numero)}${e.nf ? ` · NF ${esc(e.nf)}` : ""}</b><small>${esc(e.fornecedor || "Fornecedor não informado")} · recebido em ${fmtD(e.recebidoEm)}</small></div>
+      <div class="it-t"><b>${plural(e.itens.length, "item", "itens")} · ${fmtN(nq)} bens · ${BRL.format(empValor(e))}</b><small>Tombados: ${fmtN(nb)} de ${fmtN(nq)}${e.situacao === "EMPLAQUETAMENTO_AGENDADO" && e.emplData ? " · emplaquetamento em " + fmtD(e.emplData) : ""}</small></div>
+      <div>${empPill(e.situacao)}</div></div>`; }).join("")}</div></div>`
+  : `<div class="card" style="padding:28px;text-align:center"><b>${empList().length ? "Nenhum empenho nesta situação." : "Nenhum empenho registrado ainda."}</b><p class="small muted" style="margin-top:6px">${empCanReceber() ? "Quando os bens chegarem ao Almoxarifado, registre o empenho digitando os itens ou importando a listagem (Excel, CSV ou PDF)." : "Os empenhos aparecem aqui quando o Almoxarifado registra o recebimento."}</p></div>`}`;
+}
+function montarEmpenhos() {
+  const q = $("#emp-q"); if (q) q.oninput = () => { S.ui.empQ = q.value; clearTimeout(q._t); q._t = setTimeout(() => { const pos = q.selectionStart; render(); const n = $("#emp-q"); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }, 250); };
+}
+
+// ---------- detalhe ----------
+function abrirEmpenho(id) {
+  const e = S.empenhos[id]; if (!e) return;
+  const nb = empBens(e).length, nq = empQtd(e);
+  const acoes = [];
+  if (e.situacao === "RECEBIDO" && empCanReceber()) acoes.push(`<button class="btn" data-act="emp-enc" data-id="${id}">Encaminhar processo à DIPA</button>`);
+  if (["RECEBIDO", "NA_DIPA"].includes(e.situacao) && empCanTombar() && nb < nq) acoes.push(`<button class="btn primary" data-act="emp-tombar" data-id="${id}">Gerar tombamentos</button>`);
+  if (["TOMBADO", "EMPLAQUETAMENTO_AGENDADO"].includes(e.situacao) && empCanTombar()) acoes.push(`<button class="btn" data-act="emp-agendar" data-id="${id}">${e.situacao === "TOMBADO" ? "Agendar" : "Reagendar"} emplaquetamento</button><button class="btn primary" data-act="emp-concluir" data-id="${id}">Concluir emplaquetamento</button>`);
+  const dado = (l, v) => v ? `<div><span class="small muted">${l}</span><div>${esc(v)}</div></div>` : "";
+  openModal({xl:true, title:"Empenho " + esc(e.numero), sub:(e.nf ? "NF " + esc(e.nf) + " · " : "") + esc(e.fornecedor || ""), body:`
+    <div class="row wrap" style="gap:8px;margin-bottom:12px">${empPill(e.situacao)}${EMP_ST[e.situacao] && EMP_ST[e.situacao].s ? `<span class="small muted">${esc(EMP_ST[e.situacao].s)}</span>` : ""}</div>
+    <div class="form-grid" style="row-gap:10px">${dado("Recebido em", fmtD(e.recebidoEm) + " · " + (e.local || ""))}${dado("Fornecedor", e.fornecedor)}${dado("CNPJ", e.cnpj)}${dado("Processo", e.processo)}${dado("Pregão", e.pregao)}${dado("Requisição", e.requisicao)}${dado("Data do empenho", e.dataEmpenho ? fmtD(e.dataEmpenho) : "")}${dado("Data da NF", e.nfData ? fmtD(e.nfData) : "")}${dado("Emplaquetamento", e.emplEm ? "Concluído em " + fmtD(e.emplEm) : e.emplData ? "Agendado para " + fmtD(e.emplData) : "")}</div>
+    <hr><div class="row"><h3>Itens e tombamentos</h3><span class="sp"></span><span class="small muted">${fmtN(nb)} de ${fmtN(nq)} tombados · ${BRL.format(empValor(e))}</span></div>
+    <div class="tbl-wrap" style="margin-top:8px"><table class="tbl"><thead><tr><th>Item</th><th>Descrição</th><th style="text-align:right">Qtd.</th><th style="text-align:right">Valor unit.</th><th>Tombamentos</th><th>Situação</th></tr></thead><tbody>
+    ${e.itens.map(i => { const bs = itemBens(i); const ent = bs.filter(b => b.situacao === "ENTREGUE").length; return `<tr><td class="num">${i.seq}</td><td><a href="#" data-act="item" data-id="${i.materialId}">${esc(i.descricao)}</a></td><td class="num" style="text-align:right">${fmtN(i.qtd)}</td><td class="num" style="text-align:right">${BRL.format(i.vu || 0)}</td><td class="num small">${bs.length ? esc(faixas(bs.map(b => b.numero))) : '<span class="muted">—</span>'}</td><td class="small">${bs.length < i.qtd ? `<span style="color:var(--warn-ink)">${fmtN(i.qtd - bs.length)} sem número</span>` : ""}${ent ? `${bs.length < i.qtd ? "<br>" : ""}${fmtN(ent)} entregue(s)` : bs.length >= i.qtd ? "Na reserva" : ""}</td></tr>`; }).join("")}</tbody></table></div>
+    ${(e.historico || []).length ? `<hr><h3 style="margin-bottom:8px">Histórico</h3><div class="small">${e.historico.slice().reverse().map(h => `<div style="padding:6px 0;border-bottom:1px solid var(--line-2)"><b>${fmtDT(h.em)}</b> · ${esc(h.texto)} <span class="muted">· ${esc(nameOf(h.por))}</span></div>`).join("")}</div>` : ""}`,
+    foot:`${R() === "ADMIN" ? `<button class="btn danger" data-act="emp-excluir" data-id="${id}">Excluir registro</button>` : ""}${nb ? `<button class="btn ghost" data-act="emp-csv" data-id="${id}">${ic("down")}Lista de tombamentos</button>` : ""}<span class="sp"></span>${acoes.join("")}<button class="btn" data-act="close">Fechar</button>`});
+}
+async function empCsv(id) {
+  const e = S.empenhos[id]; const rows = [["Tombamento", "Descrição", "Empenho", "NF", "Fornecedor", "Valor unitário", "Situação"]];
+  e.itens.forEach(i => itemBens(i).forEach(b => rows.push([b.numero, i.descricao, e.numero, e.nf, e.fornecedor, (i.vu || 0).toFixed(2).replace(".", ","), b.situacao === "ENTREGUE" ? "Entregue" : "Na reserva"])));
+  const csv = "﻿" + rows.map(r => r.map(c => `"${String(c ?? "").replace(/"/g, '""')}"`).join(";")).join("\r\n");
+  await saveFile("tombamentos-" + e.numero + (e.nf ? "-NF" + e.nf : "") + ".csv", csv);
+}
+
+// ---------- gerar tombamentos (DIPA) ----------
+function formTombar(id) {
+  const e = S.empenhos[id]; const itens = e.itens.filter(i => itemBens(i).length < i.qtd);
+  const ini = {}; const modo = {}; const lista = {};
+  const m = openModal({xl:true, title:"Gerar tombamentos · " + esc(e.numero), sub:esc(e.fornecedor || ""), body:`
+    <p class="ink2" style="margin-top:0">Informe o primeiro número de cada item e o sistema gera a sequência para a quantidade. Ao preencher um item, o próximo é sugerido em seguida. Se os números não forem contínuos, use “Lista”.</p>
+    <div class="row wrap" style="gap:8px;margin:10px 0"><input class="inp num" id="tb-geral" placeholder="Nº inicial para todos" style="width:200px" inputmode="numeric"><button class="btn sm" id="tb-seq">Preencher em sequência</button></div>
+    <div id="tb-l"></div><p class="small" id="tb-m" style="margin-top:8px"></p>`,
+    foot:`<button class="btn" data-act="close">Cancelar</button><button class="btn primary" id="tb-go">Gerar tombamentos</button>`});
+  const draw = () => {
+    $("#tb-l", m).innerHTML = `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Item</th><th>Descrição</th><th style="text-align:right">Sem número</th><th>Tombamentos</th></tr></thead><tbody>${itens.map(i => { const f = i.qtd - itemBens(i).length; const v = ini[i.id] || ""; return `<tr><td class="num">${i.seq}</td><td>${esc(i.descricao)}</td><td class="num" style="text-align:right">${fmtN(f)}</td><td style="min-width:260px">
+      <div class="row" style="gap:6px"><div class="seg" role="group" style="flex:none"><button aria-pressed="${modo[i.id] !== "lista"}" data-tm="${i.id}" data-v="ini">Faixa</button><button aria-pressed="${modo[i.id] === "lista"}" data-tm="${i.id}" data-v="lista">Lista</button></div>
+      ${modo[i.id] === "lista" ? `<textarea class="inp num" data-tl="${i.id}" rows="2" placeholder="Um número por linha ou separados por vírgula">${esc(lista[i.id] || "")}</textarea>` : `<input class="inp num" data-ti="${i.id}" value="${esc(v)}" placeholder="Nº inicial" inputmode="numeric" style="width:140px">`}</div>
+      <div class="small muted" style="margin-top:4px">${modo[i.id] === "lista" ? (() => { const n = (lista[i.id] || "").split(/[\s,;]+/).filter(Boolean).length; return `${n} de ${f} números`; })() : /^\d+$/.test(v) ? `${esc(v)} a ${esc(proxNumero(v, f - 1))}` : ""}</div></td></tr>`; }).join("")}</tbody></table></div>`;
+  };
+  draw();
+  const seq = s0 => { let n = s0; for (const i of itens) { if (modo[i.id] === "lista") continue; ini[i.id] = n; n = proxNumero(n, i.qtd - itemBens(i).length); } draw(); };
+  $("#tb-seq", m).onclick = () => { const s0 = $("#tb-geral", m).value.trim(); if (!/^\d+$/.test(s0)) { toast("Digite o número inicial só com algarismos.", true); return; } seq(s0); };
+  m.addEventListener("click", ev => { const b = ev.target.closest("[data-tm]"); if (b) { modo[b.dataset.tm] = b.dataset.v; draw(); } });
+  m.addEventListener("change", ev => {
+    const t = ev.target;
+    if (t.dataset.ti) { ini[t.dataset.ti] = t.value.trim(); const k = itens.findIndex(i => i.id === t.dataset.ti); const nx = itens[k + 1]; if (nx && !ini[nx.id] && /^\d+$/.test(ini[t.dataset.ti]) && modo[nx.id] !== "lista") ini[nx.id] = proxNumero(ini[t.dataset.ti], itens[k].qtd - itemBens(itens[k]).length); draw(); }
+    if (t.dataset.tl) { lista[t.dataset.tl] = t.value; draw(); }
+  });
+  $("#tb-go", m).onclick = async () => {
+    const fx = {};
+    for (const i of itens) { if (modo[i.id] === "lista") { const a = (lista[i.id] || "").split(/[\s,;]+/).filter(Boolean); if (a.length) fx[i.id] = a; } else if (ini[i.id]) fx[i.id] = ini[i.id]; }
+    if (!Object.keys(fx).length) { toast("Informe o tombamento inicial de pelo menos um item.", true); return; }
+    $("#tb-go", m).disabled = true;
+    const r = await empDo("tombar", {p_id:id, p_faixas:fx}, null);
+    if (r) { closeModal(); const n = typeof r === "number" ? r : null; toast((n ? plural(n, "tombamento gerado", "tombamentos gerados") : "Tombamentos gerados") + "."); setTimeout(() => abrirEmpenho(id), 200); }
+    else $("#tb-go", m).disabled = false;
+  };
+}
+function formAgendar(id) {
+  const e = S.empenhos[id];
+  const m = openModal({title:"Agendar emplaquetamento", sub:esc(e.numero), body:`<div class="form-grid"><div class="field"><label>Data</label><input class="inp" id="ag-d" type="date" value="${e.emplData ? d2i(e.emplData) : ""}"></div><div class="field"><label>Equipe ou observação <span class="muted">(opcional)</span></label><input class="inp" id="ag-o" placeholder="Ex.: equipe de emplaquetamento 2"></div></div>`, foot:`<button class="btn" data-act="close">Cancelar</button><button class="btn primary" id="ag-go">Agendar</button>`});
+  $("#ag-go", m).onclick = async () => { const d = $("#ag-d", m).value; if (!d) { toast("Informe a data.", true); return; } if (await empDo("agendar", {p_id:id, p_data:d, p_obs:$("#ag-o", m).value.trim()}, "Emplaquetamento agendado para " + fmtD(i2d(d)) + ".")) { closeModal(); setTimeout(() => abrirEmpenho(id), 200); } };
+}
+function formConcluir(id) {
+  const m = openModal({title:"Concluir emplaquetamento", sub:esc(S.empenhos[id].numero), body:`<p class="ink2" style="margin-top:0">Confirme que as plaquetas de todos os bens deste empenho foram afixadas.</p><div class="field" style="max-width:220px"><label>Data</label><input class="inp" id="cc-d" type="date" value="${d2i(now())}"></div>`, foot:`<button class="btn" data-act="close">Cancelar</button><button class="btn primary" id="cc-go">Concluir</button>`});
+  $("#cc-go", m).onclick = async () => { if (await empDo("concluir", {p_id:id, p_data:$("#cc-d", m).value || null}, "Emplaquetamento concluído.")) { closeModal(); setTimeout(() => abrirEmpenho(id), 200); } };
+}
+
+// ---------- registrar empenho: digitação ou arquivo (mesmo formulário de conferência) ----------
+function formEmpenho(pre) {
+  pre = pre || {}; const H = {recebidoEm:d2i(now()), localRecebimento:"Almoxarifado Central", ...(pre.cab || {})};
+  let rows = (pre.itens && pre.itens.length ? pre.itens : [{}, {}, {}]).map(x => ({descricao:x.descricao || "", unidadeMedida:x.unidadeMedida || "UNIDADE", qtd:x.qtd || "", vu:x.vu || "", materialId:x.materialId || ""}));
+  const names = Object.values(S.items).map(x => x.descricao);
+  const campo = (k, l, ph, t = "text", cls = "") => `<div class="field ${cls}"><label>${l}</label><input class="inp" name="${k}" type="${t}" value="${esc(H[k] || "")}" ${ph ? `placeholder="${esc(ph)}"` : ""}></div>`;
+  const m = openModal({xl:true, title:pre.arquivo ? "Conferir empenho importado" : "Registrar empenho recebido", sub:pre.arquivo ? "Arquivo: " + esc(pre.arquivo) : "Os itens entram no saldo da reserva técnica ao registrar", body:`
+    ${pre.aviso ? `<div class="alert ${pre.itens && pre.itens.length ? "" : "warning"}" style="margin-bottom:12px"><div class="ic">${ic("alert")}</div><div><b>${esc(pre.aviso.t)}</b><p>${esc(pre.aviso.d)}</p></div></div>` : ""}
+    <form id="f-emp" class="form-grid" autocomplete="off">
+      ${campo("numero", "Número do empenho *", "2026NE000442")}${campo("nf", "Nota fiscal", "Nº da NF")}${campo("nfData", "Data da NF", "", "date")}
+      ${campo("fornecedor", "Fornecedor", "Razão social", "text", "")}${campo("cnpj", "CNPJ", "00.000.000/0000-00")}${campo("dataEmpenho", "Data do empenho", "", "date")}
+      ${campo("processo", "Processo", "23074.000000/2026-00")}${campo("pregao", "Pregão / ata", "33/2025")}${campo("requisicao", "Requisição", "")}
+      ${campo("recebidoEm", "Recebido no Almoxarifado em *", "", "date")}${campo("localRecebimento", "Local", "")}
+    </form>
+    <datalist id="emp-mats">${names.map(n => `<option value="${esc(n)}">`).join("")}</datalist>
+    <hr><div class="row"><h3>Itens</h3><span class="sp"></span><span class="small muted" id="emp-tot"></span></div>
+    <div class="tbl-wrap" style="margin-top:8px"><table class="tbl"><thead><tr><th style="width:36px">#</th><th>Descrição do bem</th><th style="width:110px">Unidade</th><th style="width:90px;text-align:right">Qtd.</th><th style="width:130px;text-align:right">Valor unit. (R$)</th><th style="width:120px;text-align:right">Total</th><th style="width:40px"></th></tr></thead><tbody id="emp-rows"></tbody></table></div>
+    <button class="btn sm" id="emp-add" style="margin-top:8px">${ic("plus")}Adicionar item</button>
+    <p class="small muted" style="margin-top:10px">Ao registrar, cada item soma ao saldo do material de mesma descrição; se não existir, um material novo é criado no catálogo. Depois, a DIPA gera os tombamentos.</p>`,
+    foot:`<button class="btn" data-act="close">Cancelar</button><button class="btn primary" id="emp-go">Registrar recebimento</button>`});
+  const matOf = r => r.materialId && S.items[r.materialId] ? S.items[r.materialId] : Object.values(S.items).find(x => normName(x.descricao) === normName(r.descricao));
+  const draw = () => {
+    $("#emp-rows", m).innerHTML = rows.map((r, k) => { const mt = r.descricao.trim() ? matOf(r) : null; return `<tr><td class="num">${k + 1}</td><td><input class="inp" data-r="${k}" data-k="descricao" value="${esc(r.descricao)}" list="emp-mats" placeholder="Descrição"><div class="small ${mt ? "muted" : ""}" style="margin-top:3px;${!mt && r.descricao.trim() ? "color:var(--brand-2)" : ""}">${!r.descricao.trim() ? "" : mt ? "Soma ao material " + esc(mt.codigo || "") : "Material novo no catálogo"}</div></td>
+      <td><input class="inp" data-r="${k}" data-k="unidadeMedida" value="${esc(r.unidadeMedida)}"></td><td><input class="inp num" data-r="${k}" data-k="qtd" value="${esc(r.qtd)}" inputmode="numeric" style="text-align:right"></td>
+      <td><input class="inp num" data-r="${k}" data-k="vu" value="${esc(r.vu === "" ? "" : String(r.vu).replace(".", ","))}" inputmode="decimal" style="text-align:right"></td><td class="num" style="text-align:right">${BRL.format((+r.qtd || 0) * (num(r.vu) || 0))}</td>
+      <td><button class="btn ghost icon-btn" data-del="${k}" aria-label="Remover item ${k + 1}">${ic("x")}</button></td></tr>`; }).join("");
+    const v = rows.filter(r => r.descricao.trim()); $("#emp-tot", m).textContent = `${plural(v.length, "item", "itens")} · ${fmtN(v.reduce((a, r) => a + (+r.qtd || 0), 0))} bens · ${BRL.format(v.reduce((a, r) => a + (+r.qtd || 0) * (num(r.vu) || 0), 0))}`;
+  };
+  const num = v => typeof v === "number" ? v : parseBR(v) || 0;
+  draw();
+  m.addEventListener("change", ev => { const t = ev.target; if (t.dataset.r !== undefined && t.dataset.k) { rows[+t.dataset.r][t.dataset.k] = t.value; if (t.dataset.k === "descricao") rows[+t.dataset.r].materialId = ""; draw(); } });
+  m.addEventListener("click", ev => { const d = ev.target.closest("[data-del]"); if (d) { ev.preventDefault(); rows.splice(+d.dataset.del, 1); if (!rows.length) rows.push({descricao:"", unidadeMedida:"UNIDADE", qtd:"", vu:"", materialId:""}); draw(); } });
+  $("#emp-add", m).onclick = ev => { ev.preventDefault(); rows.push({descricao:"", unidadeMedida:"UNIDADE", qtd:"", vu:"", materialId:""}); draw(); const ins = m.querySelectorAll('[data-k="descricao"]'); ins[ins.length - 1].focus(); };
+  $("#emp-go", m).onclick = async () => {
+    const fd = Object.fromEntries(new FormData($("#f-emp", m)));
+    if (!fd.numero.trim()) { toast("Informe o número do empenho.", true); return; }
+    const itens = rows.filter(r => r.descricao.trim()).map(r => { const mt = matOf(r); return {descricao:r.descricao.trim(), unidadeMedida:r.unidadeMedida || "UNIDADE", qtd:Math.round(+String(r.qtd).replace(",", ".") || 0), vu:num(r.vu), materialId:mt ? mt.id : null, categoria:mt ? mt.categoria : guessCat(r.descricao)}; });
+    if (!itens.length) { toast("Adicione pelo menos um item.", true); return; }
+    const sem = itens.findIndex(i => i.qtd <= 0); if (sem >= 0) { toast(`Informe a quantidade do item ${sem + 1}.`, true); return; }
+    $("#emp-go", m).disabled = true;
+    const dados = {...fd, itens, arquivo:pre.arquivo || ""};
+    const r = await empDo("registrar", {p_dados:dados}, `Empenho ${fd.numero.trim().toUpperCase()} registrado · ${fmtN(itens.reduce((a, i) => a + i.qtd, 0))} bens entraram na reserva.`);
+    if (r) { closeModal(); if (typeof r === "string") setTimeout(() => abrirEmpenho(r), 250); }
+    else $("#emp-go", m).disabled = false;
+  };
+}
+
+// ---------- importar listagem de empenho (Excel, CSV, ODS, PDF, TXT) ----------
+const LIB_PDF = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+const LIB_PDF_W = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+function formImportarEmpenho() {
+  const m = openModal({title:"Importar listagem de empenho", body:`
+    <p class="ink2" style="margin-top:0">Envie a listagem ou a nota de empenho em <b>Excel (.xls, .xlsx), CSV, ODS, PDF ou TXT</b>. O sistema lê os dados do empenho e os itens e mostra tudo para você conferir antes de registrar.</p>
+    <label class="btn primary" style="margin-top:8px">${ic("up")}Escolher arquivo<input type="file" id="ei-f" hidden accept=".xls,.xlsx,.xlsm,.ods,.csv,.txt,.pdf,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain"></label>
+    <p class="small" id="ei-m" style="margin-top:10px"></p>
+    <p class="small muted" style="margin-top:12px">Dica: PDFs digitalizados (foto ou scanner) não têm texto para ler. Nesse caso, use o Excel exportado do SIPAC ou digite os itens.</p>`,
+    foot:`<button class="btn" data-act="close">Cancelar</button><button class="btn ghost" data-act="emp-novo">Digitar manualmente</button>`});
+  $("#ei-f", m).onchange = async ev => {
+    const f = ev.target.files[0]; if (!f) return; const msg = $("#ei-m", m); msg.style.color = ""; msg.textContent = "Lendo " + f.name + "…";
+    try { const r = await lerArquivoEmpenho(f); closeModal(); formEmpenho(r); }
+    catch (e) { msg.style.color = "var(--crit-ink)"; msg.textContent = "Não foi possível ler o arquivo: " + e.message; }
+  };
+}
+async function lerArquivoEmpenho(f) {
+  const ext = (f.name.split(".").pop() || "").toLowerCase(); const buf = await f.arrayBuffer();
+  let linhas; // array de arrays de células
+  if (ext === "pdf" || f.type === "application/pdf") linhas = await pdfLinhas(buf);
+  else {
+    await loadScript(LIB_XLSX);
+    const wb = ext === "txt" || ext === "csv" ? XLSX.read(new TextDecoder(detectarCodificacao(buf)).decode(buf), {type:"string", raw:true}) : XLSX.read(buf, {type:"array", cellDates:true});
+    linhas = []; wb.SheetNames.forEach(n => XLSX.utils.sheet_to_json(wb.Sheets[n], {header:1, raw:false, defval:""}).forEach(r => linhas.push(r.map(c => String(c ?? "").trim()))));
+  }
+  const r = interpretarEmpenho(linhas, ext === "pdf");
+  r.arquivo = f.name;
+  r.aviso = r.itens.length ? {t:`Lemos ${plural(r.itens.length, "item", "itens")} de ${f.name}`, d:"Confira número do empenho, quantidades e valores antes de registrar. Você pode corrigir qualquer campo."}
+                           : {t:"Não encontramos a tabela de itens neste arquivo", d:"Os dados do cabeçalho que conseguimos ler já estão preenchidos. Digite os itens abaixo ou tente o arquivo em Excel."};
+  return r;
+}
+function detectarCodificacao(buf) { try { new TextDecoder("utf-8", {fatal:true}).decode(buf); return "utf-8"; } catch (e) { return "windows-1252"; } }
+async function pdfLinhas(buf) {
+  await loadScript(LIB_PDF); const lib = window.pdfjsLib; lib.GlobalWorkerOptions.workerSrc = LIB_PDF_W;
+  const doc = await lib.getDocument({data:new Uint8Array(buf)}).promise; const out = [];
+  for (let p = 1; p <= Math.min(doc.numPages, 40); p++) {
+    const tc = await (await doc.getPage(p)).getTextContent(); const rows = [];
+    tc.items.forEach(it => { if (!it.str.trim()) return; const y = Math.round(it.transform[5]), x = it.transform[4]; let r = rows.find(r => Math.abs(r.y - y) <= 3); if (!r) rows.push(r = {y, cells:[]}); r.cells.push({x, w:it.width || 0, s:it.str}); });
+    rows.sort((a, b) => b.y - a.y).forEach(r => { r.cells.sort((a, b) => a.x - b.x); const cs = []; let last = null; r.cells.forEach(c => { if (last && c.x - (last.x + last.w) < 6) { cs[cs.length - 1] += (c.x - (last.x + last.w) > 1.5 ? " " : "") + c.s; } else cs.push(c.s); last = c; }); out.push(cs.map(s => s.trim()).filter(Boolean)); });
+  }
+  if (!out.some(r => r.length)) throw new Error("o PDF não tem texto (parece digitalizado).");
+  return out;
+}
+function interpretarEmpenho(linhas, ehPdf) {
+  const texto = linhas.map(r => r.join("  ")).join("\n");
+  const pega = re => { const m = texto.match(re); return m ? m[1].trim() : ""; };
+  const cab = {};
+  let ne = texto.match(/\b(20\d{2})\s*N\s*E\s*0*(\d{1,6})\b/i);
+  cab.numero = ne ? ne[1] + "NE" + ne[2].padStart(6, "0") : pega(/empenho\s*(?:n[º°o.]*)?\s*[:\-]?\s*([0-9]{1,6}\s*\/\s*20\d{2})/i).replace(/\s/g, "");
+  cab.cnpj = pega(/(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2})/);
+  cab.processo = pega(/(\d{5}\.\d{6}\/\d{4}-\d{2})/);
+  cab.pregao = pega(/preg[aã]o(?:\s+eletr[oô]nico)?\s*(?:n[º°o.]*)?\s*[:\-]?\s*(\d{1,5}\s*\/\s*\d{2,4})/i).replace(/\s/g, "");
+  cab.nf = pega(/(?:nota\s+fiscal|\bNF-?e?\b)\s*(?:n[º°o.]*)?\s*[:\-]?\s*(\d{2,12})/i);
+  cab.requisicao = pega(/requisi[cç][aã]o\s*(?:n[º°o.]*)?\s*[:\-]?\s*(\d{1,7}\s*\/\s*\d{2,4})/i).replace(/\s/g, "");
+  for (const r of linhas) { for (let k = 0; k < r.length; k++) { const c = r[k]; const mm = c.match(/^(?:fornecedor|credor|favorecido|raz[aã]o social|contratad[ao])\s*[:\-]?\s*(.*)$/i); if (mm) { const v = (mm[1] || r[k + 1] || "").replace(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/, "").replace(/^[\s\-–:]+|[\s\-–:]+$/g, ""); if (v && !cab.fornecedor && !/^cnpj/i.test(v)) cab.fornecedor = v.slice(0, 120); } } if (cab.fornecedor) break; }
+  const dt = re => { const v = pega(re); const m = v.match(/(\d{2})\/(\d{2})\/(\d{4})/); return m ? `${m[3]}-${m[2]}-${m[1]}` : ""; };
+  cab.dataEmpenho = dt(/(?:data\s+(?:do\s+)?empenho|data\s+de\s+emiss[aã]o|emiss[aã]o)\s*[:\-]?\s*(\d{2}\/\d{2}\/\d{4})/i);
+  // 1) tabela com cabeçalho reconhecível
+  const ehDesc = s => /descri|especifica|material|produto|objeto|discrimina/i.test(s), ehQtd = s => /^(qtd|qtde|quant)/i.test(s), ehVu = s => /unit|pre[cç]o\s*un|v\.?\s*un/i.test(s), ehTot = s => /total/i.test(s) && !/unit/i.test(s), ehUm = s => /^(un|und|unid|unidade|u\.?\s*m|medida|unid\.?\s*medida)\b\.?/i.test(s);
+  let melhor = null;
+  linhas.forEach((r, k) => { const sc = (r.some(ehDesc) ? 2 : 0) + (r.some(ehQtd) ? 2 : 0) + (r.some(ehVu) ? 1 : 0) + (r.some(ehTot) ? 1 : 0); if (sc >= 4 && (!melhor || sc > melhor.sc)) melhor = {k, sc}; });
+  const itens = [];
+  const n = v => { if (v === null || v === undefined) return NaN; const s = String(v).replace(/R\$\s?/i, "").trim(); if (!s) return NaN; return parseBR(s); };
+  if (melhor) {
+    const h = linhas[melhor.k]; const ci = f => h.findIndex(f);
+    const cD = ci(ehDesc), cQ = ci(ehQtd), cV = ci(ehVu), cT = ci(ehTot), cU = ci(ehUm);
+    for (let k = melhor.k + 1; k < linhas.length; k++) {
+      const r = linhas[k]; const d = (r[cD] || "").trim(); const q = n(r[cQ]); let v = cV >= 0 ? n(r[cV]) : NaN; const t = cT >= 0 ? n(r[cT]) : NaN;
+      if (!d && !(q > 0)) { if (itens.length) { const vazias = linhas.slice(k, k + 3).every(x => !x.join("").trim()); if (vazias) break; } continue; }
+      if (/^(total|subtotal|valor total|soma)/i.test(d)) break;
+      if (!d || !(q > 0)) { if (d && itens.length && !(q > 0) && !(t > 0)) itens[itens.length - 1].descricao += " " + d; continue; }
+      if (!(v > 0) && t > 0) v = t / q;
+      itens.push({descricao:d.replace(/\s+/g, " "), qtd:Math.round(q), vu:v > 0 ? +v.toFixed(2) : "", unidadeMedida:cU >= 0 && r[cU] && r[cU].length <= 12 ? r[cU].toUpperCase() : "UNIDADE"});
+    }
+  }
+  // 2) PDF sem tabela clara: linhas "descrição ... qtd [un] valor_unit valor_total"
+  if (!itens.length && ehPdf) {
+    const re = /^(?:\d{1,4}\s+)?(.{6,}?)\s+(\d{1,6}(?:[.,]\d{1,3})?)\s+(?:(UN|UND|UNID|UNIDADE|PC|PÇ|PEÇA|CX|KIT|JG|JOGO|CJ|CONJ|PAR|M|MT)\.?\s+)?R?\$?\s*([\d.]{1,12},\d{2})\s+R?\$?\s*([\d.]{1,14},\d{2})$/i;
+    linhas.map(r => r.join(" ").replace(/\s+/g, " ").trim()).forEach(l => { const m = l.match(re); if (!m) return; const q = parseBR(m[2]), v = parseBR(m[4]), t = parseBR(m[5]); if (q > 0 && v > 0 && Math.abs(q * v - t) <= Math.max(0.05, t * 0.01)) itens.push({descricao:m[1].trim(), qtd:Math.round(q), vu:v, unidadeMedida:(m[3] || "UNIDADE").toUpperCase()}); });
+  }
+  // casa cada item com o catálogo
+  itens.forEach(i => { const mt = Object.values(S.items).find(x => normName(x.descricao) === normName(i.descricao)); if (mt) i.materialId = mt.id; });
+  Object.keys(cab).forEach(k => { if (!cab[k]) delete cab[k]; });
+  return {cab:{...cab, recebidoEm:d2i(now()), localRecebimento:"Almoxarifado Central"}, itens};
+}
+
+// ---------- dados de demonstração ----------
+function seedEmpenhosDemo() {
+  S.empenhos = {}; S.bens = {};
+  const its = Object.values(S.items); const pick = re => its.find(x => re.test(x.descricao));
+  const a = pick(/^Notebook/), b = pick(/^Monitor/), c = pick(/^Cadeira/), d = pick(/split.*12/);
+  const mk = (num, nf, forn, cnpj, dias, st, itens, tomb) => {
+    const e = {id:"em" + rid(10), numero:num, nf, fornecedor:forn, cnpj, processo:"23074." + rid(6).replace(/\D/g, "1").slice(0, 6) + "/2026-11", pregao:"33/2025", requisicao:"", recebidoEm:now() - dias * DAY, local:"Almoxarifado Central", situacao:st, obs:"", arquivo:"", historico:[], criadoPor:"u_alm", criadoEm:now() - dias * DAY, itens:[]};
+    itens.forEach(([it, q], k) => { if (it) e.itens.push({id:"ei" + rid(8), seq:k + 1, descricao:it.descricao, unidadeMedida:"UNIDADE", qtd:q, vu:it.valorUnitario || 0, materialId:it.id, loteId:null}); });
+    e.historico.push({em:e.recebidoEm, por:"u_alm", papel:"ALMOXARIFADO", texto:"Recebimento registrado · " + plural(e.itens.length, "item", "itens")});
+    if (st !== "RECEBIDO") { e.encaminhadoEm = e.recebidoEm + 2 * DAY; e.historico.push({em:e.encaminhadoEm, por:"u_alm", papel:"ALMOXARIFADO", texto:"Processo de pagamento encaminhado à Divisão de Patrimônio"}); }
+    if (tomb) { let n = tomb; e.itens.forEach(i => { for (let k = 0; k < i.qtd; k++) { S.bens[n] = {numero:n, itemId:i.id, empenhoId:e.id, materialId:i.materialId, situacao:"EM_RESERVA", planoId:null, geradoPor:"u_pat", geradoEm:e.recebidoEm + 5 * DAY}; n = proxNumero(n, 1); } }); e.historico.push({em:e.recebidoEm + 5 * DAY, por:"u_pat", papel:"PATRIMONIO", texto:plural(empQtd(e), "tombamento gerado", "tombamentos gerados") + " · empenho todo tombado"}); }
+    if (st === "EMPLAQUETAMENTO_AGENDADO") { e.emplData = now() + 3 * DAY; e.historico.push({em:now() - DAY, por:"u_pat", papel:"PATRIMONIO", texto:"Emplaquetamento agendado para " + fmtD(e.emplData)}); }
+    S.empenhos[e.id] = e;
+  };
+  mk("2026NE000512", "48213", "TecNordeste Comércio Ltda", "12.345.678/0001-90", 3, "RECEBIDO", [[a, 20], [b, 30]]);
+  mk("2026NE000488", "10392", "Móveis Potiguar Ltda", "23.456.789/0001-01", 12, "NA_DIPA", [[c, 40]]);
+  mk("2026NE000431", "7781", "Clima Forte Engenharia", "34.567.890/0001-12", 25, "EMPLAQUETAMENTO_AGENDADO", [[d, 12]], "310400");
 }
 
 // ---------- AUTORIZAÇÕES ----------
@@ -2583,7 +2950,7 @@ async function persistOrg(rows, meta) {
 // ASSISTENTE DESTINA — perguntas em linguagem natural, ações por clique, log
 // =====================================================================
 const AS = {open:false, turns:[], msgs:[], busy:false, ctl:null, status:"", sample:null, tools:false, myLog:null};
-const TELAS = {painel:"Painel", reserva:"Reserva técnica", planos:"Planos de destinação", autorizacoes:"Autorizações", entregas:"Separação e entrega", monitoramento:"Monitoramento", documentos:"Documentos e autenticidade", configuracoes:"Configurações"};
+const TELAS = {painel:"Painel", reserva:"Reserva técnica", empenhos:"Empenhos e tombamento", planos:"Planos de destinação", autorizacoes:"Autorizações", entregas:"Separação e entrega", monitoramento:"Monitoramento", documentos:"Documentos e autenticidade", configuracoes:"Configurações"};
 const SYN = {GELADEIRA:"REFRIGERADOR", "MICRO-ONDAS":"MICROONDAS", SPLIT:"HI-WALL", BEBEDOUROS:"BEBEDOURO"};
 function matchText(desc, q) {
   const D = normName(desc), Q = normName(SYN[normName(q)] || q);
@@ -2764,9 +3131,29 @@ function localAnswer(q, msg) {
     if (/\//.test(m[0]) || /PLANO|PD|TERMO/.test(n)) return `Não encontrei o plano ${esc(m[0])}.`;
   }
   // b) tombamento
+  // empenhos: número do empenho, pendências de tombamento e emplaquetamento
+  m = n.match(/\b(20\d{2})\s*NE\s*0*(\d{1,6})\b/);
+  if (m || /EMPENHO/.test(n)) {
+    const alvo = m ? m[1] + "NE" + m[2].padStart(6, "0") : null;
+    const E = empList().filter(e => !alvo || e.numero === alvo);
+    if (alvo && !E.length) return `Não encontrei o empenho ${alvo} no Destina.`;
+    if (alvo) { const e = E[0]; act({tipo:"abrir_tela", tela:"empenhos", rotulo:"Abrir empenhos"}); const nb = empBens(e).length;
+      return `**Empenho ${esc(e.numero)}**${e.nf ? " · NF " + esc(e.nf) : ""} · ${esc(EMP_ST[e.situacao].l)}\n- Fornecedor: ${esc(e.fornecedor || "não informado")}\n- Recebido em ${fmtD(e.recebidoEm)} · ${fmtN(empQtd(e))} bens · ${BRL.format(empValor(e))}\n- Tombados: ${fmtN(nb)} de ${fmtN(empQtd(e))}${e.emplData ? "\n- Emplaquetamento " + (e.emplEm ? "concluído em " + fmtD(e.emplEm) : "agendado para " + fmtD(e.emplData)) : ""}\nItens:\n` + lista(e.itens, i => `- ${fmtN(i.qtd)} × ${esc(i.descricao)}${itemBens(i).length ? " · " + esc(faixas(itemBens(i).map(b => b.numero))) : ""}`, 8); }
+    let F = E, tit = "Empenhos em andamento";
+    if (/AGUARD\w*\s+TOMBAMENTO|SEM TOMBAMENTO|TOMBAR|NA DIPA/.test(n)) { F = E.filter(e => e.situacao === "RECEBIDO" || e.situacao === "NA_DIPA"); tit = "Empenhos aguardando tombamento"; }
+    else if (/EMPLAQUET/.test(n)) { F = E.filter(e => e.situacao === "TOMBADO" || e.situacao === "EMPLAQUETAMENTO_AGENDADO"); tit = "Empenhos aguardando emplaquetamento"; }
+    else F = E.filter(e => e.situacao !== "EMPLAQUETADO");
+    act({tipo:"abrir_tela", tela:"empenhos", rotulo:"Abrir empenhos"});
+    if (!F.length) return tit.replace("Empenhos", "Nenhum empenho") + ".";
+    return `**${tit}** (${F.length}):\n` + lista(F.sort((a, b) => a.recebidoEm - b.recebidoEm), e => `- ${esc(e.numero)}${e.nf ? " · NF " + esc(e.nf) : ""} · ${esc(e.fornecedor || "")} · ${fmtN(empQtd(e))} bens · ${esc(EMP_ST[e.situacao].l)} desde ${fmtD(e.recebidoEm)}`);
+  }
+  if (/EMPLAQUET/.test(n)) { const F = empList().filter(e => e.situacao === "TOMBADO" || e.situacao === "EMPLAQUETAMENTO_AGENDADO"); act({tipo:"abrir_tela", tela:"empenhos", rotulo:"Abrir empenhos"}); return F.length ? `**${plural(F.length, "empenho aguarda", "empenhos aguardam")} emplaquetamento:**\n` + lista(F, e => `- ${esc(e.numero)} · ${fmtN(empQtd(e))} bens${e.emplData ? " · agendado para " + fmtD(e.emplData) : " · sem data marcada"}`) : "Nenhum empenho aguardando emplaquetamento."; }
   m = n.match(/TOMBAMENTO\D{0,6}(\d{3,})/) || n.match(/\b(\d{6,})\b/);
   if (m) {
     const t = m[1];
+    const bm = (S.bens || {})[t] || Object.values(S.bens || {}).find(b => b.numero.replace(/^0+/, "") === t.replace(/^0+/, ""));
+    if (bm && bm.situacao === "EM_RESERVA") { const it = S.items[bm.materialId], e = S.empenhos[bm.empenhoId]; act({tipo:"abrir_material", material_id:bm.materialId, rotulo:"Abrir o material"});
+      return `O tombamento **${esc(bm.numero)}** é ${esc(it ? it.descricao : "um bem")} e **está na reserva técnica**${e ? `, recebido pelo empenho ${esc(e.numero)}${e.nf ? " (NF " + esc(e.nf) + ")" : ""} em ${fmtD(e.recebidoEm)}` : ""}.${e ? " Emplaquetamento: " + (e.emplEm ? "concluído." : e.emplData ? "agendado para " + fmtD(e.emplData) + "." : "pendente.") : ""}`; }
     for (const p of Object.values(S.plans)) {
       const tb = p.entrega && p.entrega.tombamentos || {};
       for (const iid in tb) if ((tb[iid] || []).some(x => String(x).trim() === t)) {
@@ -3118,7 +3505,7 @@ document.addEventListener("click", async e => {
   if (e.target.matches("[data-scrim]")) { closeModal(); return; }
   const el = e.target.closest("[data-act]"); if (!el) return;
   const a = el.dataset.act, id = el.dataset.id;
-  if (el.tagName === "A" && (a === "item" || a === "more")) e.preventDefault();
+  if (el.tagName === "A" && (a === "item" || a === "more" || a === "emp-abrir")) e.preventDefault();
   switch (a) {
     case "close": closeModal(); break;
     case "login-tab": S.loginTab = el.dataset.k; render(); break;
@@ -3168,6 +3555,16 @@ document.addEventListener("click", async e => {
     case "org-import": openOrgImport(); break;
     case "org-reset": { const m = openModal({title:"Restaurar a estrutura da UFPB", body:"<p>A estrutura importada será descartada e o Destina volta a usar a hierarquia SIPAC/UFPB embutida.</p>", foot:`<button class="btn" data-act="close">Voltar</button><button class="btn primary" id="go">Restaurar</button>`}); $("#go", m).onclick = async () => { if (await persistOrg(null)) { closeModal(); toast("Estrutura padrão restaurada."); render(); } }; break; }
     case "layout-conversa": setLayout("conversa"); break;
+    case "emp-novo": closeModal(); formEmpenho(); break;
+    case "emp-import": formImportarEmpenho(); break;
+    case "emp-st": S.ui.empSt = id; render(); break;
+    case "emp-abrir": abrirEmpenho(id); break;
+    case "emp-enc": if (await empDo("encaminhar", {p_id:id}, "Processo encaminhado à Divisão de Patrimônio.")) { closeModal(); setTimeout(() => abrirEmpenho(id), 200); } break;
+    case "emp-tombar": closeModal(); formTombar(id); break;
+    case "emp-agendar": closeModal(); formAgendar(id); break;
+    case "emp-concluir": closeModal(); formConcluir(id); break;
+    case "emp-csv": empCsv(id); break;
+    case "emp-excluir": { const e = S.empenhos[id]; const m = openModal({title:"Excluir o registro do empenho " + esc(e.numero) + "?", body:`<p class="ink2">Os ${fmtN(empQtd(e))} bens saem do saldo da reserva e os tombamentos gerados para ele são apagados. Use só para corrigir um registro feito por engano.</p>`, foot:`<button class="btn" data-act="close">Cancelar</button><button class="btn danger" id="ex-go">Excluir registro</button>`}); $("#ex-go", m).onclick = async () => { if (await empDo("excluir", {p_id:id}, "Registro do empenho excluído.")) closeModal(); }; break; }
     case "ext-add": { const v = ($("#ext-mail") || {}).value || ""; if (await sbDo("autorizar_email", {p_email:v}, "E-mail autorizado a se cadastrar.")) sbCarregarExternos(); break; }
     case "ext-del": { if (await sbDo("remover_email", {p_email:id}, "Autorização removida. A conta já criada continua valendo.")) sbCarregarExternos(); break; }
     case "backup": sbBackup(); break;
