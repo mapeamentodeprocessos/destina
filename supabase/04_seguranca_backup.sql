@@ -1,7 +1,7 @@
--- Destina · 04 · cadastro só com e-mail institucional, exceções autorizadas e sinal de atividade
+-- Destina · 04 · cadastro com e-mail @ufpb.br ou Gmail, exceções autorizadas e sinal de atividade
 -- Rode depois de 01, 02 e 03. Pode ser rodado de novo sem problema.
 
--- E-mails fora do domínio ufpb.br que o administrador autorizou a se cadastrar
+-- Outros e-mails (nem ufpb.br nem Gmail) que o administrador autorizou a se cadastrar
 create table if not exists public.emails_permitidos (
   email text primary key check (email = lower(email)),
   incluido_por uuid references auth.users(id) on delete set null,
@@ -13,10 +13,10 @@ create policy "administrador consulta" on public.emails_permitidos for select to
 revoke all on public.emails_permitidos from anon, public;
 grant select on public.emails_permitidos to authenticated;
 
--- Aceita @ufpb.br e subdomínios (@academico.ufpb.br, @ccs.ufpb.br...) ou e-mail autorizado
+-- Aceita @ufpb.br e subdomínios (@academico.ufpb.br...), @gmail.com / @googlemail.com ou e-mail autorizado
 create or replace function public._email_aceito(p text) returns boolean
 language sql stable security definer set search_path = '' as $$
-  select lower(coalesce(p, '')) ~ '@([a-z0-9-]+\.)*ufpb\.br$'
+  select lower(coalesce(p, '')) ~ '@(([a-z0-9-]+\.)*ufpb\.br|gmail\.com|googlemail\.com)$'
       or exists (select 1 from public.emails_permitidos where email = lower(p));
 $$;
 
@@ -56,7 +56,7 @@ revoke all on function public._email_aceito(text), public._validar_email_cadastr
 grant execute on function public.autorizar_email(text), public.remover_email(text) to authenticated;
 grant execute on function public.ping() to anon, authenticated;
 
--- Contas que já existem continuam valendo; o e-mail do primeiro administrador fica autorizado
+-- Contas que já existem continuam valendo, qualquer que seja o domínio
 insert into public.emails_permitidos (email)
-  select lower(email) from auth.users where email is not null and lower(email) !~ '@([a-z0-9-]+\.)*ufpb\.br$'
+  select lower(email) from auth.users where email is not null and not public._email_aceito(email)
   on conflict do nothing;

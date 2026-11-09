@@ -921,7 +921,7 @@ function traduzErroAuth(j) {
   if (/user_already_exists|already registered/i.test(c + m)) return "Já existe uma conta com esse e-mail. Use “Entrar” ou recupere a senha.";
   if (/weak_password/.test(c) || /Password should/i.test(m)) return "Senha fraca: use pelo menos 8 caracteres, com letras e números.";
   if (/over_email_send_rate_limit|rate limit/i.test(c + m)) return "Muitas tentativas seguidas. Aguarde alguns minutos.";
-  if (/DESTINA_EMAIL|Database error saving new user|unexpected_failure/i.test(c + m)) return "Use o seu e-mail institucional (@ufpb.br). Para cadastrar outro e-mail, peça ao gestor do sistema que o autorize.";
+  if (/DESTINA_EMAIL|Database error saving new user|unexpected_failure/i.test(c + m)) return "Use um e-mail @ufpb.br ou do Gmail. Para cadastrar outro tipo de e-mail, peça ao gestor do sistema que o autorize.";
   return m || "Não foi possível concluir. Tente novamente.";
 }
 const SB = {
@@ -1025,10 +1025,10 @@ function vLogin() {
     <div class="seg" role="group" style="margin:14px 0"><button aria-pressed="${tab === "entrar"}" data-act="login-tab" data-k="entrar">Entrar</button><button aria-pressed="${tab === "criar"}" data-act="login-tab" data-k="criar">Criar conta</button><button aria-pressed="${tab === "senha"}" data-act="login-tab" data-k="senha">Esqueci a senha</button></div>
     <form id="f-auth" class="form-grid" style="grid-template-columns:1fr" autocomplete="on">
       ${tab === "criar" ? `<div class="field"><label>Nome completo</label><input class="inp" name="nome" required autocomplete="name"></div>` : ""}
-      <div class="field"><label>E-mail institucional</label><input class="inp" name="email" type="email" required autocomplete="email" placeholder="nome@ufpb.br"></div>
+      <div class="field"><label>E-mail (@ufpb.br ou Gmail)</label><input class="inp" name="email" type="email" required autocomplete="email" placeholder="nome@ufpb.br ou nome@gmail.com"></div>
       ${tab !== "senha" ? `<div class="field"><label>Senha</label><input class="inp" name="senha" type="password" required minlength="8" autocomplete="${tab === "criar" ? "new-password" : "current-password"}"></div>` : ""}
       <button class="btn primary" style="margin-top:6px">${tab === "entrar" ? "Entrar" : tab === "criar" ? "Criar conta" : "Enviar link de recuperação"}</button>
-      <p class="small muted" id="auth-msg">${tab === "criar" ? "Use o e-mail @ufpb.br. Depois de criar a conta, o gestor do sistema aprova o acesso e define o seu perfil." : ""}</p>
+      <p class="small muted" id="auth-msg">${tab === "criar" ? "Use um e-mail @ufpb.br ou do Gmail. Depois de criar a conta, o gestor do sistema aprova o acesso e define o seu perfil." : ""}</p>
     </form>
     <hr><button class="btn ghost sm" data-act="to-demo">Ver a demonstração com dados fictícios</button></div>`;
 }
@@ -1053,8 +1053,8 @@ function sbPerfisSection() {
   <div class="tbl-wrap" style="margin-top:12px"><table class="tbl"><thead><tr><th>Pessoa</th><th style="text-align:center">Aprovado</th>${Object.keys(ROLES).map(r => `<th style="text-align:center;font-size:11px">${esc(ROLES[r].label.replace(" (autorizadora)", ""))}</th>`).join("")}</tr></thead><tbody>
   ${L.map(p => `<tr><td><b>${esc(p.nome || "—")}</b>${p.id === S.me.id ? ' <span class="pill">você</span>' : ""}<div class="small muted">${esc(p.email || "")}</div></td><td style="text-align:center"><input type="checkbox" data-sbp="${p.id}" data-k="aprovado" ${p.aprovado ? "checked" : ""} aria-label="Aprovado"></td>${Object.keys(ROLES).map(r => `<td style="text-align:center"><input type="checkbox" data-sbp="${p.id}" data-k="${r}" ${p.papeis.includes(r) ? "checked" : ""} aria-label="${esc(ROLES[r].label)}"></td>`).join("")}</tr>`).join("")}
   </tbody></table></div>
-  ${has("ADMIN") ? `<hr><h4 style="margin:4px 0 4px">E-mails externos autorizados</h4>
-  <p class="small muted">O cadastro aceita apenas e-mails @ufpb.br (e subdomínios, como @academico.ufpb.br). Autorize aqui, um a um, os e-mails de fora que precisam entrar.</p>
+  ${has("ADMIN") ? `<hr><h4 style="margin:4px 0 4px">Outros e-mails autorizados</h4>
+  <p class="small muted">O cadastro aceita e-mails @ufpb.br (e subdomínios, como @academico.ufpb.br) e do Gmail. Se alguém precisar usar outro provedor (Hotmail, Outlook, Yahoo…), autorize o e-mail aqui.</p>
   <div class="row wrap" style="gap:8px;margin-top:8px"><input class="inp" id="ext-mail" type="email" placeholder="nome@exemplo.com" style="flex:1;min-width:220px" aria-label="E-mail externo a autorizar"><button class="btn" data-act="ext-add">Autorizar e-mail</button></div>
   <div id="ext-list" class="small" style="margin-top:10px"><span class="muted">Carregando…</span></div>
   <hr><div class="row wrap"><div style="flex:1;min-width:240px"><b>Cópia de segurança</b><p class="small muted">Baixa todos os dados do Destina (materiais, entradas, planos, assinaturas, entregas, tombamentos, eventos e registros) em um arquivo. Guarde em local seguro da DIPA: o arquivo contém dados pessoais dos recebedores.</p></div><button class="btn" data-act="backup">Baixar cópia de segurança</button></div>` : ""}`;
@@ -1063,7 +1063,7 @@ async function sbCarregarExternos() {
   const box = $("#ext-list"); if (!box) return;
   try {
     const L = await SB.req("emails_permitidos?select=email,incluido_em&order=email");
-    box.innerHTML = L.length ? L.map(x => `<div class="row" style="justify-content:space-between;border-bottom:1px solid var(--line-2);padding:6px 0"><span>${esc(x.email)}</span><button class="btn ghost sm" data-act="ext-del" data-id="${esc(x.email)}">Remover</button></div>`).join("") : '<span class="muted">Nenhum e-mail externo autorizado.</span>';
+    box.innerHTML = L.length ? L.map(x => `<div class="row" style="justify-content:space-between;border-bottom:1px solid var(--line-2);padding:6px 0"><span>${esc(x.email)}</span><button class="btn ghost sm" data-act="ext-del" data-id="${esc(x.email)}">Remover</button></div>`).join("") : '<span class="muted">Nenhum outro e-mail autorizado.</span>';
   } catch (e) { box.innerHTML = '<span class="muted">Rode o script 04 no Supabase para ativar esta lista.</span>'; }
 }
 async function sbBackup() {
