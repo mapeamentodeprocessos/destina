@@ -407,6 +407,31 @@ textarea.inp{min-height:84px;resize:vertical}
 .as-f .btn.mic.rec{background:#B3261E;border-color:#B3261E;color:#fff;animation:vozpulse 1.3s infinite}
 @keyframes vozpulse{0%{box-shadow:0 0 0 0 rgba(179,38,30,.45)}70%{box-shadow:0 0 0 10px rgba(179,38,30,0)}100%{box-shadow:0 0 0 0 rgba(179,38,30,0)}}
 .as-h .icon-btn.on{color:var(--brand-2);background:var(--brand-soft)}
+#as-panel.full{inset:0;width:auto;border-radius:0;border:0;box-shadow:none;animation:none;z-index:95}
+#as-panel.full .as-h{padding:12px max(16px,calc((100% - 980px)/2))}
+#as-panel.full .as-body{padding:28px max(18px,calc((100% - 780px)/2))}
+#as-panel.full .as-f{padding:14px max(18px,calc((100% - 780px)/2)) 6px;border-top:0}
+#as-panel.full .as-f textarea{min-height:52px;font-size:15px;border-radius:16px;padding:14px 16px}
+#as-panel.full .as-f .btn{height:52px;border-radius:14px}
+#as-panel.full .as-foot,#as-panel.full .as-voz{text-align:center;justify-content:center}
+#as-panel.full .as-m{font-size:15px;max-width:92%}
+#as-panel.full .as-hello{margin:auto 0;text-align:center}
+#as-panel.full .as-hello h2{font-size:clamp(22px,4vw,30px);margin:0 0 10px;letter-spacing:-.01em}
+#as-panel.full .as-hello p{max-width:560px;margin:0 auto}
+#as-panel.full .as-kpis{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin:18px 0 4px}
+#as-panel.full .as-kpis span{border:1px solid var(--line);border-radius:99px;padding:6px 12px;font-size:13px;color:var(--ink-2);background:var(--panel-2)}
+#as-panel.full .as-kpis b{color:var(--ink)}
+#as-panel.full .as-sug{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));margin-top:22px;text-align:left}
+#as-panel.full.min{top:auto;left:auto;right:16px;bottom:16px;width:320px;border:1px solid var(--line);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.22)}
+#as-panel.full.min .as-h{padding:14px 14px 12px 16px}
+.layout-btn{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}.layout-btn svg{width:17px;height:17px}
+@media (max-width:900px){#as-panel.full.min{right:14px;bottom:calc(76px + env(safe-area-inset-bottom));width:min(320px,calc(100% - 28px))}.layout-btn span{display:none}}
+.lay-op{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.lay-op button{text-align:left;border:1.5px solid var(--line);border-radius:14px;background:var(--panel);padding:16px;cursor:pointer;color:var(--ink)}
+.lay-op button:hover,.lay-op button:focus-visible{border-color:var(--brand-2)}
+.lay-op b{display:block;font-size:15px;margin:10px 0 4px}.lay-op small{color:var(--muted);font-size:13px;line-height:1.45;display:block}
+.lay-op svg{width:28px;height:28px;color:var(--brand-2)}
+@media (max-width:560px){.lay-op{grid-template-columns:1fr}}
 .as-voz{font-size:12.5px;color:#B3261E;padding:0 16px 4px;display:flex;align-items:center;gap:6px}
 #as-panel.min{top:auto;height:auto;width:320px;animation:none}
 #as-panel.min .as-body,#as-panel.min .as-f,#as-panel.min .as-foot,#as-panel.min #as-clear{display:none}
@@ -1191,6 +1216,7 @@ function renderShell() {
     <button class="search" data-act="cmd" aria-label="Buscar">${ic("busca")}<span>Buscar bens, planos, unidades ou ações</span><kbd>Ctrl K</kbd></button>
     <div class="top-right">
       <button class="mode-chip ${S.mode}" data-act="${S.mode === "oficial" ? "who" : (S.officialAvailable ? "to-oficial" : "about-mode")}" title="Ambiente atual"><i></i><span>${S.mode === "oficial" ? "Oficial" : "Demonstração"}</span></button>
+      ${podeChat() ? `<button class="btn ghost sm layout-btn" data-act="layout-conversa" title="Usar só o assistente, em tela cheia"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Modo conversa</span></button>` : ""}
       <button class="btn ghost icon-btn" data-act="theme" aria-label="Alternar tema claro ou escuro">${ic(document.documentElement.dataset.theme === "dark" ? "sun" : "moon")}</button>
       <button class="who" data-act="who" aria-label="Trocar perfil">${av}<span class="t"><b>${esc(S.me.name || "Você")}</b><small>${esc(roleLabel)}</small></span></button>
     </div>`;
@@ -1198,7 +1224,7 @@ function renderShell() {
   const fourth = has("REITORIA","PRA") ? "autorizacoes" : has("ALMOXARIFADO","PATRIMONIO") ? "entregas" : "monitoramento";
   mob.push(fourth);
   const short = {painel:"Painel", reserva:"Reserva", planos:"Planos", autorizacoes:"Assinar", entregas:"Entregas", monitoramento:"Alertas"};
-  drawFab(); if (AS.open) drawChat();
+  aplicarLayout();
   $("#bottom").innerHTML = mob.map(k => { const c = navCount(k); return `<a href="#${k}" ${cur === k ? 'aria-current="page"' : ""}>${ic(k)}<span>${short[k]}</span>${c ? `<span class="badge">${c}</span>` : ""}</a>`; }).join("") + `<a href="#" data-act="more">${ic("mais")}<span>Mais</span></a>`;
 }
 function logoSvg() {
@@ -2611,7 +2637,7 @@ function allLogs() {
 function runAction(a) {
   if (!actionAllowed(a)) { toast("Essa ação não está mais disponível para o seu perfil ou para a situação atual do plano.", true); return; }
   logAssist({tipo:"clique", texto:a.rotulo, acao:{tipo:a.tipo, plano:a.plano_id ? (S.plans[a.plano_id] || {}).numero : "", material:a.material_id ? (S.items[a.material_id] || {}).descricao : "", tela:a.tela || ""}});
-  if (innerWidth < 900) closeChat();
+  if (AS.full) { AS.min = true; drawChat(); } else if (innerWidth < 900) closeChat();
   switch (a.tipo) {
     case "abrir_tela": if (a.tela === "reserva" && a.busca) { S.ui.q = a.busca; S.ui.sit = ""; } if (a.tela === "planos" && a.busca) S.ui.planQ = a.busca; go(a.tela); break;
     case "abrir_plano": go("plano-" + a.plano_id); break;
@@ -2919,19 +2945,55 @@ function mdLite(t) {
   for (const l of lines) { const m = l.match(/^\s*[-•*]\s+(.*)/); if (m) { if (!inList) { html += "<ul>"; inList = true; } html += `<li>${m[1]}</li>`; } else { if (inList) { html += "</ul>"; inList = false; } html += l.trim() ? `<p>${l}</p>` : ""; } }
   return html + (inList ? "</ul>" : "");
 }
-function chatSuggestions() {
+function helloFull() {
+  const nome = S.me.name ? String(S.me.name).replace(/^(Prof\.ª|Prof\.)\s*/, "").split(" ")[0] : "";
+  let kp = "";
+  try { const k = tIndicadores(); const pend = k.minhas_pendencias.length; const atr = k.planos_acima_do_prazo.length;
+    kp = `<div class="as-kpis">${pend ? `<span><b>${pend}</b> ${pend === 1 ? "pendência sua" : "pendências suas"}</span>` : `<span>Nenhuma pendência sua</span>`}<span><b>${BRLc(k.valor_disponivel_conhecido)}</b> disponíveis para destinar</span><span><b>${fmtN(k.bens_sob_guarda)}</b> bens sob guarda</span>${atr ? `<span><b>${atr}</b> acima do prazo</span>` : ""}</div>`; } catch (e) {}
+  return `<div class="as-hello"><h2>${saudacao()}${nome ? ", " + esc(nome) : ""}. O que você quer saber?</h2><p class="ink2">Pergunte por texto ou pelo microfone. Eu respondo com os dados do Destina e, quando houver algo a fazer, ofereço o botão certo.</p>${kp}<div class="as-sug">${chatSuggestions(6).map(s => `<button class="as-chip" data-sug="${esc(s)}">${esc(s)}</button>`).join("")}</div></div>`;
+}
+function saudacao() { const h = new Date().getHours(); return h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite"; }
+function chatSuggestions(max = 4) {
   const s = ["Quantos ar-condicionados temos disponíveis?", "O que está parado há mais tempo na reserva?"];
   if (has("PRA","REITORIA")) s.unshift("Quais termos aguardam a minha assinatura?");
   if (can.createPlan()) s.push("Monte um plano com 20 cadeiras para a Biblioteca Central");
   if (can.separate() || can.deliver()) s.push("O que está pronto para separar ou entregar?");
   s.push("Para onde foram as cadeiras entregues este mês?");
-  return s.slice(0, 4);
+  s.push("Resumo da reserva", "Quais itens têm maior estoque?", "Valor total da reserva");
+  return [...new Set(s)].slice(0, max);
+}
+// ---------- modo de uso: completo (painel e menus) ou conversa (só o assistente, em tela cheia) ----------
+const podeChat = () => !(S.mode === "oficial" && (!SB.s || !S.role));
+const layoutKey = () => "destina_layout_" + (S.mode === "demo" ? "demo" : (S.me.id || ""));
+const getLayout = () => lsGet(layoutKey()) || "";
+function setLayout(l) {
+  lsSet(layoutKey(), l); closeModal();
+  if (l === "completo" && AS.full) { AS.full = false; closeChat(); }
+  aplicarLayout();
+  toast(l === "conversa" ? "Modo conversa ligado. Para ver painéis e menus, toque em “Sistema completo”." : "Modo completo. O assistente continua no botão do canto.");
+}
+function aplicarLayout() {
+  const pode = podeChat(), conv = pode && getLayout() === "conversa";
+  document.body.classList.toggle("modo-conversa", conv);
+  AS.full = conv;
+  if (conv && !AS.open) openChat(); else if (AS.open) drawChat();
+  drawFab();
+  if (pode && !getLayout() && !AS.perguntouLayout && !$(".modal")) { AS.perguntouLayout = true; setTimeout(escolherLayout, 600); }
+}
+function escolherLayout() {
+  if (!podeChat()) return;
+  const m = openModal({title:"Como você prefere usar o Destina?", body:`<p class="ink2" style="margin-top:0">Você pode trocar quando quiser, pelo botão no topo da tela.</p>
+    <div class="lay-op">
+      <button data-lay="conversa"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg><b>Conversa</b><small>Uma tela limpa, só com o assistente. Você pergunta, por texto ou voz, e ele responde e leva você direto ao que precisa assinar ou ver.</small></button>
+      <button data-lay="completo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><b>Sistema completo</b><small>Painel, indicadores, menus e todas as telas. O assistente fica disponível no botão do canto.</small></button>
+    </div>`, foot:""});
+  m.querySelectorAll("[data-lay]").forEach(b => b.onclick = () => setLayout(b.dataset.lay));
 }
 function drawFab() {
   let f = $("#as-fab");
   if (!f) { f = document.createElement("button"); f.id = "as-fab"; f.setAttribute("aria-label", "Abrir o assistente"); f.onclick = () => AS.open ? closeChat() : openChat(); document.body.appendChild(f); }
-  f.hidden = S.mode === "oficial" && (!SB.s || !S.role);
-  if (f.hidden && AS.open) closeChat();
+  f.hidden = !podeChat() || !!AS.full;
+  if (!podeChat() && AS.open) closeChat();
   f.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg><span>Assistente</span>`;
   f.classList.toggle("on", AS.open);
 }
@@ -2947,19 +3009,20 @@ function drawChat() {
   const p = $("#as-panel"); if (!p || !AS.open) return;
   const keepVal = $("#as-in") ? $("#as-in").value : "";
   p.innerHTML = `
-    <div class="as-h"><div class="as-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4z"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg></div><div style="min-width:0;flex:1"><b>Assistente Destina</b><small>${esc(ROLES[R()] ? ROLES[R()].label : "")}</small></div>
-      ${AS.msgs.length ? `<button class="btn ghost sm" id="as-clear">Nova conversa</button>` : ""}${VOZ.fala ? `<button class="btn ghost icon-btn ${VOZ.ler ? "on" : ""}" id="as-ler" aria-pressed="${VOZ.ler}" aria-label="${VOZ.ler ? "Parar de ler as respostas em voz alta" : "Ler as respostas em voz alta"}" title="${VOZ.ler ? "Respostas em voz alta: ligado" : "Respostas em voz alta: desligado"}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4z"/>${VOZ.ler ? '<path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/>' : '<path d="M22 9l-6 6M16 9l6 6"/>'}</svg></button>` : ""}<button class="btn ghost icon-btn" id="as-min" aria-label="${AS.min ? "Restaurar o assistente" : "Minimizar o assistente"}" title="${AS.min ? "Restaurar" : "Minimizar"}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">${AS.min ? '<path d="M6 15l6-6 6 6"/>' : '<path d="M5 12h14"/>'}</svg></button><button class="btn ghost icon-btn" id="as-x" aria-label="Fechar">${ic("x")}</button></div>
+    <div class="as-h"><div class="as-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4z"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg></div><div style="min-width:0;flex:1"><b>${AS.full && AS.min ? "Voltar à conversa" : "Assistente Destina"}</b><small>${esc(ROLES[R()] ? ROLES[R()].label : "")}${AS.full && !AS.min && S.me.name ? " · " + esc(S.me.name) : ""}</small></div>
+      ${AS.msgs.length ? `<button class="btn ghost sm" id="as-clear">Nova conversa</button>` : ""}${VOZ.fala ? `<button class="btn ghost icon-btn ${VOZ.ler ? "on" : ""}" id="as-ler" aria-pressed="${VOZ.ler}" aria-label="${VOZ.ler ? "Parar de ler as respostas em voz alta" : "Ler as respostas em voz alta"}" title="${VOZ.ler ? "Respostas em voz alta: ligado" : "Respostas em voz alta: desligado"}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4z"/>${VOZ.ler ? '<path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/>' : '<path d="M22 9l-6 6M16 9l6 6"/>'}</svg></button>` : ""}${AS.full && !AS.min ? `<button class="btn sm" id="as-completo" title="Ver painéis, menus e todas as telas">Sistema completo</button>` : `<button class="btn ghost icon-btn" id="as-min" aria-label="${AS.min ? "Restaurar o assistente" : "Minimizar o assistente"}" title="${AS.min ? "Restaurar" : "Minimizar"}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">${AS.min ? '<path d="M6 15l6-6 6 6"/>' : '<path d="M5 12h14"/>'}</svg></button>`}${AS.full ? "" : `<button class="btn ghost icon-btn" id="as-x" aria-label="Fechar">${ic("x")}</button>`}</div>
     <div class="as-body" id="as-body">
-      ${AS.msgs.length ? "" : `<div class="as-hello"><p><b>Olá${S.me.name ? ", " + esc(String(S.me.name).replace(/^(Prof\.ª|Prof\.)\s*/, "").split(" ")[0]) : ""}.</b> Pergunte sobre saldos, planos, entregas e prazos, digitando ou pelo microfone. Quando fizer sentido, eu ofereço um botão para você ir direto ao ponto. Respondo com cálculo exato sobre os dados do sistema, e tudo fica registrado no log de auditoria.</p><div class="as-sug">${chatSuggestions().map(s => `<button class="as-chip" data-sug="${esc(s)}">${esc(s)}</button>`).join("")}</div></div>`}
+      ${AS.msgs.length ? "" : AS.full ? helloFull() : `<div class="as-hello"><p><b>Olá${S.me.name ? ", " + esc(String(S.me.name).replace(/^(Prof\.ª|Prof\.)\s*/, "").split(" ")[0]) : ""}.</b> Pergunte sobre saldos, planos, entregas e prazos, digitando ou pelo microfone. Quando fizer sentido, eu ofereço um botão para você ir direto ao ponto. Respondo com cálculo exato sobre os dados do sistema, e tudo fica registrado no log de auditoria.</p><div class="as-sug">${chatSuggestions().map(s => `<button class="as-chip" data-sug="${esc(s)}">${esc(s)}</button>`).join("")}</div></div>`}
       ${AS.msgs.map((m, i) => m.role === "user" ? `<div class="as-m u">${esc(m.text)}</div>` : `<div class="as-m a">${m.text ? mdLite(m.text) : ""}${m.pending && !m.text ? `<p class="as-think"><span></span><span></span><span></span> ${esc(AS.status || "Pensando")}…</p>` : ""}${m.pending && m.text && AS.status ? `<p class="as-think">${esc(AS.status)}…</p>` : ""}${m.err ? `<p class="small" style="color:var(--crit-ink)">${esc(m.err)}</p>` : ""}${m.actions.length ? `<div class="as-acts">${m.actions.map((a, k) => `<button class="btn sm ${k === 0 ? "primary" : ""}" data-act-i="${i}_${k}">${esc(a.rotulo)}</button>`).join("")}</div>` : ""}${!m.pending && m.used.length ? `<div class="as-used">Consultou: ${esc([...new Set(m.used)].join(", ").toLowerCase())}</div>` : ""}</div>`).join("")}
     </div>
     <form class="as-f" id="as-f"><textarea id="as-in" rows="1" placeholder="${VOZ.on ? "Ouvindo… fale a sua pergunta" : "Pergunte ou toque no microfone…"}" aria-label="Mensagem para o assistente">${esc(keepVal)}</textarea>${VOZ.ok ? `<button type="button" class="btn mic ${VOZ.on ? "rec" : ""}" id="as-mic" aria-pressed="${VOZ.on}" aria-label="${VOZ.on ? "Parar de ouvir" : "Falar a pergunta"}" title="${VOZ.on ? "Parar de ouvir" : "Falar a pergunta"}" ${AS.busy ? "disabled" : ""}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/></svg></button>` : ""}${AS.busy ? `<button type="button" class="btn" id="as-stop">Parar</button>` : `<button class="btn primary" aria-label="Enviar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg></button>`}</form>
     ${VOZ.on ? `<p class="as-voz" role="status">● Ouvindo. Fale a pergunta; eu envio quando você parar.</p>` : ""}
     <p class="as-foot">Respostas calculadas a partir dos dados do Destina. Ações só acontecem com o seu clique.</p>`;
   const b = $("#as-body"); b.scrollTop = b.scrollHeight;
-  p.classList.toggle("min", !!AS.min);
-  $("#as-x").onclick = e => { e.stopPropagation(); closeChat(); };
-  $("#as-min").onclick = e => { e.stopPropagation(); AS.min = !AS.min; drawChat(); if (!AS.min) setTimeout(() => $("#as-in") && $("#as-in").focus(), 50); };
+  p.classList.toggle("min", !!AS.min); p.classList.toggle("full", !!AS.full);
+  if ($("#as-x")) $("#as-x").onclick = e => { e.stopPropagation(); closeChat(); };
+  if ($("#as-completo")) $("#as-completo").onclick = e => { e.stopPropagation(); setLayout("completo"); };
+  if ($("#as-min")) $("#as-min").onclick = e => { e.stopPropagation(); AS.min = !AS.min; drawChat(); if (!AS.min) setTimeout(() => $("#as-in") && $("#as-in").focus(), 50); };
   $(".as-h", p).onclick = () => { if (AS.min) { AS.min = false; drawChat(); } };
   if ($("#as-clear")) $("#as-clear").onclick = () => { if (AS.ctl) AS.ctl.abort(); AS.msgs = []; AS.turns = []; drawChat(); };
   if ($("#as-mic")) $("#as-mic").onclick = vozOuvir;
@@ -3031,6 +3094,7 @@ document.addEventListener("click", async e => {
     case "save-cfg": saveCfg(); break;
     case "org-import": openOrgImport(); break;
     case "org-reset": { const m = openModal({title:"Restaurar a estrutura da UFPB", body:"<p>A estrutura importada será descartada e o Destina volta a usar a hierarquia SIPAC/UFPB embutida.</p>", foot:`<button class="btn" data-act="close">Voltar</button><button class="btn primary" id="go">Restaurar</button>`}); $("#go", m).onclick = async () => { if (await persistOrg(null)) { closeModal(); toast("Estrutura padrão restaurada."); render(); } }; break; }
+    case "layout-conversa": setLayout("conversa"); break;
     case "ext-add": { const v = ($("#ext-mail") || {}).value || ""; if (await sbDo("autorizar_email", {p_email:v}, "E-mail autorizado a se cadastrar.")) sbCarregarExternos(); break; }
     case "ext-del": { if (await sbDo("remover_email", {p_email:id}, "Autorização removida. A conta já criada continua valendo.")) sbCarregarExternos(); break; }
     case "backup": sbBackup(); break;
