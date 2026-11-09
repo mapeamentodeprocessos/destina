@@ -2663,9 +2663,8 @@ function localAnswer(q, msg) {
   // 7b) maiores estoques / maiores valores
   if (/MAIOR(ES)? (ESTOQUE|SALDO|QUANTIDADE|VALOR)|MAIS (ITENS|BENS|ESTOQUE|SALDO|VALIOSO)|RANKING|\bTOP\b|MAIS TEM|QUE MAIS (TEM|HA|SOBRA)/.test(n)) {
     const st = computeStock(); const porValor = /VALOR|VALIOS|CARO|R\$/.test(n);
-    const vu = it => { const ls = it.lotes || []; const q = ls.reduce((a, l) => a + (+l.qtd || 0), 0); return q ? ls.reduce((a, l) => a + (+l.qtd || 0) * (+l.vu || 0), 0) / q : 0; };
     const its = Object.values(S.items).filter(it => st[it.id] && st[it.id].saldo > 0)
-      .map(it => ({it, saldo:st[it.id].saldo, disp:st[it.id].disp, valor:st[it.id].saldo * vu(it)}))
+      .map(it => ({it, saldo:st[it.id].saldo, disp:st[it.id].disp, valor:st[it.id].saldo * (+it.valorUnitario || 0)}))
       .sort((a, b) => porValor ? b.valor - a.valor : b.saldo - a.saldo);
     if (!its.length) return "A reserva técnica está sem saldo no momento.";
     act({tipo:"abrir_tela", tela:"reserva", rotulo:"Ver a reserva técnica"});
