@@ -2660,6 +2660,17 @@ function localAnswer(q, msg) {
     if (!r.registros) return `Não encontrei entregas${uni ? " para “" + esc(uni.toLowerCase()) + "”" : ""}${dias ? " no período" : ""}.`;
     return `**${fmtN(r.total_unidades)} bens** entregues${uni ? " para “" + esc(uni.toLowerCase()) + "” (incluindo subunidades)" : ""}${dias ? " no período" : ""}:\n` + lista(r.entregas, e => `- ${e.data} · ${fmtN(e.quantidade)} × ${esc(e.material)} → ${esc(e.unidade)}${e.historico ? " (histórico)" : ""}`);
   }
+  // 7b) maiores estoques / maiores valores
+  if (/MAIOR(ES)? (ESTOQUE|SALDO|QUANTIDADE|VALOR)|MAIS (ITENS|BENS|ESTOQUE|SALDO|VALIOSO)|RANKING|\bTOP\b|MAIS TEM|QUE MAIS (TEM|HA|SOBRA)/.test(n)) {
+    const st = computeStock(); const porValor = /VALOR|VALIOS|CARO|R\$/.test(n);
+    const vu = it => { const ls = it.lotes || []; const q = ls.reduce((a, l) => a + (+l.qtd || 0), 0); return q ? ls.reduce((a, l) => a + (+l.qtd || 0) * (+l.vu || 0), 0) / q : 0; };
+    const its = Object.values(S.items).filter(it => st[it.id] && st[it.id].saldo > 0)
+      .map(it => ({it, saldo:st[it.id].saldo, disp:st[it.id].disp, valor:st[it.id].saldo * vu(it)}))
+      .sort((a, b) => porValor ? b.valor - a.valor : b.saldo - a.saldo);
+    if (!its.length) return "A reserva técnica está sem saldo no momento.";
+    act({tipo:"abrir_tela", tela:"reserva", rotulo:"Ver a reserva técnica"});
+    return `Itens com ${porValor ? "maior valor" : "maior estoque"} na reserva:\n` + lista(its, x => `- ${esc(x.it.descricao)}: **${fmtN(x.saldo)}** sob guarda (${fmtN(x.disp)} disponíveis)${x.valor ? " · " + BRL.format(x.valor) : ""}`, 10);
+  }
   // 8) quantidade de um material
   m = n.match(/QUANT[OA]S?\s+(.+?)(\s+(TEMOS|TEM|HA|EXISTEM|ESTAO|DISPONIVE\w*|NA RESERVA|EM ESTOQUE|SOBRARAM|RESTAM)\b.*)?$/) || n.match(/(SALDO|ESTOQUE) DE\s+(.+)$/);
   if (m) {
@@ -2674,7 +2685,7 @@ function localAnswer(q, msg) {
     const k = tIndicadores();
     return `**Resumo da reserva técnica**\n- ${fmtN(k.bens_disponiveis)} bens disponíveis (${BRL.format(k.valor_disponivel_conhecido)} com valor conhecido)\n- ${fmtN(k.bens_sob_guarda)} bens sob guarda em ${fmtN(k.materiais)} materiais\n- Planos: ${Object.entries(k.planos_por_etapa).filter(([, v]) => v).map(([e, v]) => `${v} ${e.toLowerCase()}`).join(", ") || "nenhum"}\n- ${k.planos_acima_do_prazo.length} acima do prazo · ${k.alertas.length} alertas ativos`;
   }
-  return `Ainda não sei responder isso sem a IA. Experimente perguntas como:\n- Quantos ar-condicionados temos?\n- Quais termos aguardam a minha assinatura?\n- O que está parado há mais tempo?\n- O que foi entregue para o CCS este ano?\n- Monte um plano com 20 cadeiras para a Biblioteca Central\n- Quais planos estão atrasados?\n- Resumo da reserva`;
+  return `Ainda não sei responder isso sem a IA. Experimente perguntas como:\n- Quantos ar-condicionados temos?\n- Quais itens têm maior estoque?\n- Quais termos aguardam a minha assinatura?\n- O que está parado há mais tempo?\n- O que foi entregue para o CCS este ano?\n- Monte um plano com 20 cadeiras para a Biblioteca Central\n- Quais planos estão atrasados?\n- Resumo da reserva`;
 }
 
 // ---------- envio ----------
