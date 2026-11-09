@@ -3264,7 +3264,7 @@ function localAnswer(q, msg) {
   }
   // e) planos por situação / contagem de planos
   const stHit = Object.keys(PL).find(k => PL[k].test(n));
-  if (/PLANO|TERMO|PROCESSO/.test(n) && (stHit || /QUANTOS|QUAIS|LISTA|TODOS|ATIVOS|ANDAMENTO/.test(n))) {
+  if (/PLANO|TERMO|PROCESSO/.test(n) && !/ASSINA|AGUARD\w* (MINHA|MEU|A MINHA|SUA)|MINHA AUTORIZ/.test(n) && (stHit || /QUANTOS|QUAIS|LISTA|TODOS|ATIVOS|ANDAMENTO/.test(n))) {
     let ps = Object.values(S.plans).filter(p => !p.legado);
     if (stHit) ps = ps.filter(p => p.status === stHit);
     else if (/ATIVOS|ANDAMENTO|ABERTO/.test(n)) ps = ps.filter(p => STAGES.includes(p.status) && p.status !== "ENTREGUE");
