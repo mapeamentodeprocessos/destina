@@ -967,7 +967,7 @@ const SB = {
   async req(path, opt = {}) {
     const t = await this.token(); if (!t) { const e = new Error("Sua sessão expirou. Entre novamente."); e.sessao = true; throw e; }
     const r = await fetch(this.url + "/rest/v1/" + path, {...opt, headers:{apikey:this.key, Authorization:"Bearer " + t, "Content-Type":"application/json", ...(opt.headers || {})}});
-    if (!r.ok) { const j = await r.json().catch(() => ({})); const e = new Error(j.message || ("Erro " + r.status + " no servidor.")); if (r.status === 401) e.sessao = true; throw e; }
+    if (!r.ok) { const j = await r.json().catch(() => ({})); const e = new Error(String(j.message || ("Erro " + r.status + " no servidor.")).replace(/^DESTINA_[A-Z_]+:\s*/, "")); if (r.status === 401) e.sessao = true; throw e; }
     const tx = await r.text(); return tx ? JSON.parse(tx) : null;
   },
   rpc(fn, args) { return this.req("rpc/" + fn, {method:"POST", body:JSON.stringify(args || {})}); },
@@ -1014,7 +1014,7 @@ async function sbLoad(force) {
   itens.forEach(i => I.add(i.plano_id, {itemId:i.material_id, codigo:i.codigo, descricao:i.descricao, qtd:i.qtd, vu:+i.vu}));
   etapas.forEach(e => E.add(e.plano_id, {s:e.status, at:ms(e.em)}));
   evs.forEach(e => V.add(e.plano_id, {at:ms(e.em), by:e.por, role:e.papel, tipo:e.tipo, msg:e.msg, prev:e.prev, h:e.hash}));
-  sigs.forEach(a => { (A[a.plano_id] = A[a.plano_id] || {})[a.papel] = {planId:a.plano_id, role:a.papel, by:a.por, at:ms(a.em), docHash:a.doc_hash, sig:a.sig, cargo:a.cargo, nome:a.nome}; });
+  sigs.forEach(a => { (A[a.plano_id] = A[a.plano_id] || {})[a.papel] = {planId:a.plano_id, role:a.papel, by:a.por, at:ms(a.em), docHash:a.doc_hash, sig:a.sig, cargo:a.cargo, nome:a.nome, evid:a.evidencias || null}; });
   tombs.forEach(t => { const pl = T[t.plano_id] = T[t.plano_id] || {}; (pl[t.material_id] = pl[t.material_id] || []).push(t.numero); });
   Object.values(T).forEach(pl => Object.values(pl).forEach(a => a.sort((x, y) => x.localeCompare(y, "pt-BR", {numeric:true}))));
   const EN = {}; ents.forEach(e => EN[e.plano_id] = e);
@@ -1186,6 +1186,8 @@ function routeFromHash() {
   const h = (location.hash || "").replace(/^#/, "");
   const m = h.match(/^plano-([a-z0-9-]+)$/);
   if (m) { S.route = "plano"; S.param = m[1]; return; }
+  const vf = h.match(/^verificar-([0-9A-Fa-f-]{12,20})$/);
+  if (vf) { S.route = "verificar"; S.param = vf[1].toUpperCase(); return; }
   S.route = NAV.some(n => n.k === h) ? h : "painel"; S.param = null;
 }
 window.addEventListener("hashchange", () => { routeFromHash(); renderShell(); render(); closeModal(); $("#view").focus({preventScroll:true}); window.scrollTo(0, 0); });
@@ -1236,6 +1238,7 @@ function applyTheme(t) { document.documentElement.dataset.theme = t; lsSet("dest
 function render() {
   if (!S.ready) return;
   const v = $("#view");
+  if (S.route === "verificar") { v.innerHTML = vVerificarPublico(); carregarVerificacao(); return; }
   if (S.mode === "oficial" && !SB.s) { v.innerHTML = vLogin(); return; }
   if (S.mode === "oficial" && !S.role) { v.innerHTML = vSemPerfil(); return; }
   const nav = NAV.find(n => n.k === S.route);
@@ -1975,7 +1978,12 @@ async function act_sign(id) {
   $("#dec", m).onchange = e => $("#go", m).disabled = !e.target.checked;
   $("#go", m).onclick = async () => {
     $("#go", m).disabled = true;
-    if (S.mode === "oficial") { const r = await sbDo("assinar_plano", {p_papel:role, p_id:id}, null); if (r) { closeModal(); const p = S.plans[id]; toast(p && p.status === "AUTORIZADO" ? "Assinado. Destinação autorizada." : "Assinado. Segue para a próxima assinatura."); } else $("#go", m).disabled = false; return; }
+    if (S.mode === "oficial") {
+      if (!await confirmarIdentidade(role, p0.numero)) return;
+      const r = await sbDo("assinar_plano", {p_papel:role, p_id:id}, null);
+      if (r) { closeModal(); const p = S.plans[id]; toast(p && p.status === "AUTORIZADO" ? "Assinado. Destinação autorizada. O comprovante foi enviado ao seu e-mail." : "Assinado. Segue para a próxima assinatura."); }
+      return;
+    }
     const p = clone(S.plans[id]); const t = now();
     const docHash = await sha256(docPayload(p));
     const sig = await sha256(docHash + "|" + S.me.id + "|" + role + "|" + t);
@@ -1987,6 +1995,70 @@ async function act_sign(id) {
     if (!pend.length) { setStatus(p, "AUTORIZADO"); await addEvent(p, "autorizado", "Destinação autorizada · bens reservados para a unidade"); }
     if (await persist("planos", id, p)) { closeModal(); toast(pend.length ? "Assinado. Segue para " + S.cfg.signatarios[pend[0]].cargo + "." : "Assinado. Destinação autorizada."); renderShell(); render(); }
   };
+}
+// ---------- assinatura reforçada: senha + código por e-mail ----------
+function confirmarIdentidade(role, alvo) {
+  return new Promise(resolve => {
+    let fim = false; const done = v => { if (fim) return; fim = true; resolve(v); };
+    const passo1 = () => {
+      const m = openModal({title:"Confirme a sua identidade", sub:"Assinatura de " + esc(alvo), body:`
+        <p class="ink2" style="margin-top:0">Para assinar como <b>${esc(S.cfg.signatarios[role] ? S.cfg.signatarios[role].cargo : role)}</b>, digite novamente a sua senha do Destina.</p>
+        <div class="field"><label>Senha</label><input class="inp" id="ci-s" type="password" autocomplete="current-password" required></div>
+        <p class="small" id="ci-m" style="min-height:18px"></p>`,
+        foot:`<button class="btn" data-act="close">Cancelar</button><button class="btn primary" id="ci-go">Continuar</button>`});
+      const go = async () => {
+        const senha = $("#ci-s", m).value; const msg = $("#ci-m", m); if (!senha) return;
+        $("#ci-go", m).disabled = true; msg.style.color = ""; msg.textContent = "Conferindo…";
+        try { await SB.signIn(S.me.email, senha); } catch (e) { msg.style.color = "var(--crit-ink)"; msg.textContent = e.message; $("#ci-go", m).disabled = false; return; }
+        try { const r = await SB.rpc("pedir_codigo_assinatura", {p_papel:role}); if (r && r.exige_codigo) passo2(r.enviado_para); else { fim = true; closeModal(); resolve(true); } }
+        catch (e) { msg.style.color = "var(--crit-ink)"; msg.textContent = e.message; $("#ci-go", m).disabled = false; }
+      };
+      $("#ci-go", m).onclick = go; $("#ci-s", m).onkeydown = e => { if (e.key === "Enter") go(); };
+      setTimeout(() => $("#ci-s", m) && $("#ci-s", m).focus(), 60);
+      vigiarFechamento(m);
+    };
+    const passo2 = para => {
+      const m = openModal({title:"Digite o código enviado ao seu e-mail", sub:"Assinatura de " + esc(alvo), body:`
+        <p class="ink2" style="margin-top:0">Enviamos um código de 6 dígitos para <b>${esc(para || "o seu e-mail")}</b>. Ele vale por 10 minutos.</p>
+        <div class="field"><label>Código</label><input class="inp num" id="ci-c" inputmode="numeric" autocomplete="one-time-code" maxlength="7" style="font-size:22px;letter-spacing:6px;max-width:200px"></div>
+        <p class="small" id="ci-m" style="min-height:18px"></p>`,
+        foot:`<button class="btn ghost" id="ci-re">Reenviar código</button><span class="sp"></span><button class="btn" data-act="close">Cancelar</button><button class="btn primary" id="ci-go">Confirmar e assinar</button>`});
+      const go = async () => {
+        const cod = $("#ci-c", m).value.replace(/\D/g, ""); const msg = $("#ci-m", m); if (cod.length !== 6) { msg.style.color = "var(--crit-ink)"; msg.textContent = "O código tem 6 dígitos."; return; }
+        $("#ci-go", m).disabled = true; msg.style.color = ""; msg.textContent = "Conferindo…";
+        try { const r = await SB.rpc("conferir_codigo_assinatura", {p_papel:role, p_codigo:cod}); if (r && r.ok) { fim = true; closeModal(); resolve(true); return; } msg.style.color = "var(--crit-ink)"; msg.textContent = (r && r.motivo) || "Código incorreto."; }
+        catch (e) { msg.style.color = "var(--crit-ink)"; msg.textContent = e.message; }
+        $("#ci-go", m).disabled = false;
+      };
+      $("#ci-go", m).onclick = go; $("#ci-c", m).onkeydown = e => { if (e.key === "Enter") go(); };
+      $("#ci-re", m).onclick = async () => { try { const r = await SB.rpc("pedir_codigo_assinatura", {p_papel:role}); toast("Novo código enviado para " + (r.enviado_para || "o seu e-mail") + "."); } catch (e) { toast(e.message, true); } };
+      setTimeout(() => $("#ci-c", m) && $("#ci-c", m).focus(), 60);
+      vigiarFechamento(m);
+    };
+    // se o modal for fechado (Cancelar, Esc, clique fora) sem concluir, devolve "não"
+    const vigiarFechamento = m => { const ob = new MutationObserver(() => { if (!document.body.contains(m)) { ob.disconnect(); setTimeout(() => { if (!fim && !$(".modal")) done(false); }, 0); } }); ob.observe(document.body, {childList:true, subtree:true}); };
+    passo1();
+  });
+}
+const urlVerificacao = sig => (location.origin + location.pathname).replace(/index\.html$/, "") + "#verificar-" + vcode(sig);
+function vVerificarPublico() {
+  return `<div class="welcome card" style="padding:28px;max-width:620px"><div class="row" style="gap:12px;margin-bottom:10px">${logoSvg().replace('fill="#fff"', 'fill="var(--brand)"').replace('stroke="#0B3A75"', 'stroke="#fff"')}<div><h2 style="margin:0">Verificação de autenticidade</h2><p class="small muted">Destina · Gestão da Reserva Técnica · ${esc(S.cfg.sigla || "UFPB")}</p></div></div>
+    <p class="ink2">Código de verificação <b class="num">${esc(S.param || "")}</b></p><div id="vpub" style="margin-top:12px"><p class="muted">Consultando…</p></div>
+    <hr><a class="btn ghost sm" href="#painel">Ir para o Destina</a></div>`;
+}
+async function carregarVerificacao() {
+  const out = () => $("#vpub"); const code = S.param || "";
+  const ruim = (t, d) => { if (out()) out().innerHTML = `<div class="verify-bad"><b>${t}</b><p class="small">${d}</p></div>`; };
+  if (!SB.configured) { ruim("Verificação indisponível", "Este endereço não está ligado ao ambiente oficial."); return; }
+  try {
+    const r = await fetch(SB.url + "/rest/v1/rpc/verificar_publico", {method:"POST", headers:{apikey:SB.key, Authorization:"Bearer " + SB.key, "Content-Type":"application/json"}, body:JSON.stringify({p_codigo:code})}).then(x => x.json());
+    if (!r || !r.encontrado) { ruim("Código não encontrado", "Nenhuma assinatura do Destina corresponde a esse código. Confira se o documento é original."); return; }
+    const ok = r.conteudo_ok && r.assinatura_ok;
+    out().innerHTML = `<div class="${ok ? "verify-ok" : "verify-bad"}"><b>${ok ? "Documento autêntico e íntegro" : "Atenção: o conteúdo não confere com o que foi assinado"}</b>
+      <p class="small" style="margin-top:6px">Termo <b>${esc(r.numero)}</b> · ${esc(r.unidade)} · situação: ${esc((ST[r.situacao] || {}).l || r.situacao)}</p></div>
+      <div style="margin-top:14px">${(r.assinaturas || []).map(a => `<div class="sig ok" style="margin-bottom:8px"><b>${esc(a.nome || "")}</b>${esc(a.cargo || "")}<br>Assinado eletronicamente em ${fmtDT(a.em)}${a.reforcada ? " · identidade confirmada" : ""}<br>Código ${esc(a.codigo)}</div>`).join("")}</div>
+      <p class="small muted" style="word-break:break-all;margin-top:10px">Hash SHA-256 do conteúdo assinado: ${esc(r.hash || "")}</p>`;
+  } catch (e) { ruim("Não foi possível verificar agora", "Tente novamente em instantes."); }
 }
 function act_deny(id) {
   const p0 = S.plans[id];
@@ -2085,6 +2157,7 @@ function act_batch() {
   $("#go", m).onclick = async () => {
     $("#go", m).disabled = true; let n = 0; const role = R();
     if (S.mode === "oficial") {
+      if (!await confirmarIdentidade(role, plural(sel.size, "termo", "termos"))) return;
       for (const id of sel) { try { await SB.rpc("assinar_plano", {p_papel:role, p_id:id}); n++; } catch (e) { toast((S.plans[id] || {}).numero + ": " + e.message, true); break; } }
       await sbLoad(true); closeModal(); toast(plural(n, "termo assinado", "termos assinados") + "."); renderShell(); render(); return;
     }
@@ -2203,8 +2276,8 @@ async function docAutorizacao(p, preview) {
     <p><b>Fundamentação.</b> ${esc(p.fundamentacao || S.cfg.fundamentacao)}</p>
     ${p.despacho ? `<p><b>Despacho.</b> ${esc(p.despacho)}</p>` : ""}
     <p>Considerando a instrução do processo e a disponibilidade dos bens em reserva técnica, ${req.length > 1 ? "as autoridades signatárias AUTORIZAM" : "a autoridade signatária AUTORIZA"} a destinação dos bens acima à unidade indicada, devendo o Almoxarifado Central proceder à separação e a Divisão de Patrimônio ao tombamento e à emissão do termo de responsabilidade.</p>
-    <div class="sigs">${req.map(r => { const a = (p.assinaturas || {})[r]; return `<div class="sig ${a ? "ok" : ""}"><b>${esc(a ? a.nome : S.cfg.signatarios[r].nome)}</b>${esc(a ? a.cargo : S.cfg.signatarios[r].cargo)}<br>${a ? `Assinado eletronicamente em ${fmtDT(a.at)}<br>Código de verificação <b>${vcode(a.sig)}</b>` : `<i>Pendente de assinatura</i>`}</div>`; }).join("")}</div>
-    <div class="auth">${lastSig ? qrSvg("DESTINA|" + S.cfg.sigla + "|" + p.numero + "|" + vcode(lastSig.sig) + "|" + h.slice(0, 32)) : ""}<div>Documento gerado pelo sistema Destina — Gestão da Reserva Técnica (${esc(S.cfg.sigla)}).<br>Hash SHA-256 do conteúdo: <span style="word-break:break-all">${h}</span><br>${lastSig ? `Autenticidade verificável na tela “Documentos e autenticidade” pelo código <span class="code">${vcode(lastSig.sig)}</span>.` : "Este termo ainda não tem assinaturas."}</div></div></div>`;
+    <div class="sigs">${req.map(r => { const a = (p.assinaturas || {})[r]; return `<div class="sig ${a ? "ok" : ""}"><b>${esc(a ? a.nome : S.cfg.signatarios[r].nome)}</b>${esc(a ? a.cargo : S.cfg.signatarios[r].cargo)}<br>${a ? `Assinado eletronicamente em ${fmtDT(a.at)}${a.evid && a.evid.codigo_email ? "<br>Identidade confirmada por senha e código enviado ao e-mail" : a.evid && a.evid.senha_confirmada_em ? "<br>Identidade confirmada por senha" : ""}<br>Código de verificação <b>${vcode(a.sig)}</b>` : `<i>Pendente de assinatura</i>`}</div>`; }).join("")}</div>
+    <div class="auth">${lastSig ? qrSvg(urlVerificacao(lastSig.sig)) : ""}<div>Documento gerado pelo sistema Destina — Gestão da Reserva Técnica (${esc(S.cfg.sigla)}).<br>Hash SHA-256 do conteúdo: <span style="word-break:break-all">${h}</span><br>${lastSig ? `Autenticidade verificável pelo QR Code ao lado, ou na tela “Documentos e autenticidade”, pelo código <span class="code">${vcode(lastSig.sig)}</span>.` : "Este termo ainda não tem assinaturas."}</div></div></div>`;
 }
 function docEntrega(p) {
   const e = p.entrega; const tot = planTotal(p);
