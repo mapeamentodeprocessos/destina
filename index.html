@@ -3145,9 +3145,32 @@ function runAction(a) {
 }
 // ---------- modo local (sem Claude disponível): respostas exatas para perguntas de quantidade ----------
 function localAnswer(q, msg) {
-  const n = normName(q).replace(/[?!.]/g, " ").replace(/\s+/g, " ").trim();
+  let n = normName(q).replace(/[?!.,;:]/g, " ").replace(/\s+/g, " ").trim();
   const act = a => { if (actionAllowed(a)) msg.actions.push(a); };
   const lista = (arr, f, max = 8) => arr.slice(0, max).map(f).join("\n") + (arr.length > max ? `\n- e mais ${arr.length - max}…` : "");
+  const nome = S.me.name ? String(S.me.name).replace(/^(Prof\.ª|Prof\.)\s*/, "").split(" ")[0] : "";
+  const panorama = () => { const st = computeStock(); const its = Object.values(S.items); let sg = 0, dp = 0, ent = 0, val = 0;
+    its.forEach(it => { const x = st[it.id]; if (!x) return; sg += x.saldo; dp += Math.max(0, x.disp); ent += x.ent || 0; val += x.saldo * (it.valorUnitario || 0); });
+    return {sg, dp, tram:Math.max(0, sg - dp), ent, val, mats:its.filter(it => st[it.id] && st[it.id].saldo > 0).length}; };
+  // 0) cumprimentos, agradecimentos e ajuda
+  const SAUD = /^(OI+|OLA|OPA|E AI|EAI|HELLO|HEY|BOM DIA|BOA TARDE|BOA NOITE|SAUDACOES|PRAZER)\b\s*(TUDO BEM|TUDO BOM|COMO VAI|COMO ESTA)?\s*(DESTINA|ASSISTENTE)?\s*/;
+  const sm = n.match(SAUD);
+  if (sm) { const resto = n.slice(sm[0].length).trim(); if (resto.split(" ").length >= 2) n = resto; else {
+    const k = tIndicadores(), pend = (k.minhas_pendencias || []).length, P = panorama();
+    act({tipo:"abrir_tela", tela:"reserva", rotulo:"Ver a reserva técnica"});
+    return `${saudacao()}${nome ? ", " + esc(nome) : ""}! ${pend ? `Você tem **${plural(pend, "pendência", "pendências")}** no seu perfil.` : "Você não tem pendências agora."} Hoje a reserva tem **${fmtN(P.sg)} bens sob guarda**, ${fmtN(P.dp)} disponíveis para destinar.\n\nPergunte o que precisar, por exemplo: “quantos ar-condicionados temos?”, “o que aguarda a minha assinatura?” ou “empenhos aguardando tombamento”.`; } }
+  if (/^(OBRIGAD|VALEU|BRIGAD|AGRADEC|MUITO OBRIGAD|GRATO|GRATA|PERFEITO|OTIMO|BELEZA|SHOW|OK|CERTO)\b/.test(n) && n.split(" ").length <= 4) return "Por nada! Se precisar de mais alguma informação da reserva, é só perguntar.";
+  if (/^(TUDO BEM|TUDO BOM|COMO VAI|COMO VOCE ESTA)\b/.test(n)) return `Tudo certo por aqui${nome ? ", " + esc(nome) : ""}. Em que posso ajudar com a reserva técnica?`;
+  if (/^(AJUDA|HELP|MENU|COMANDOS|O QUE (VOCE|VC) (FAZ|SABE|PODE)|COMO (FUNCIONA|TE USAR|USAR)|QUEM (E|EH) VOCE)\b/.test(n))
+    return "Eu respondo com os dados do Destina e ofereço botões para agir. Você pode perguntar, por exemplo:\n- **Totais:** “quantos bens temos hoje?”, “valor total da reserva”\n- **Materiais:** “quantos ar-condicionados temos?”, “itens com maior estoque”\n- **Planos:** “PD 0008/2026”, “planos em andamento”, “o que aguarda a minha assinatura?”\n- **Empenhos e tombamento:** “2026NE000488”, “empenhos aguardando tombamento”, “tombamento 300120”\n- **Unidades:** “o que foi entregue para o CCS?”, “unidades que mais receberam”\n- **Ações:** “monte um plano com 20 cadeiras para a Biblioteca Central”";
+  // 0b) totais gerais: “quantos bens no total eu tenho hoje?”
+  if (/\bQUANT|\bTOTAL\b/.test(n)) {
+    const GEN = new Set("QUANTO QUANTA QUANTOS QUANTAS QUANTIDADE QUAL A O OS AS E DE DO DA DOS DAS NO NA NOS NAS EM AO AOS TOTAL GERAL TODO TODA TODOS TODAS TUDO EU NOS TENHO TEMOS TEM TER HA EXISTE EXISTEM HOJE AGORA ATUALMENTE ATUAL MOMENTO NESTE NESSE BENS BEM ITENS ITEM MATERIAIS MATERIAL PATRIMONIO PATRIMONIAIS PERMANENTES PECAS UNIDADES COISAS RESERVA TECNICA ESTOQUE ALMOXARIFADO CENTRAL DISPONIVEIS DISPONIVEL SOB GUARDA GUARDADOS CADASTRADOS REGISTRADOS NOSSO NOSSA SISTEMA DESTINA AQUI LA ESTA ESTAO QUE AINDA SALDO".split(" "));
+    const resto = n.split(" ").filter(w => w && !GEN.has(w));
+    if (!resto.length) { const P = panorama(), k = tIndicadores();
+      act({tipo:"abrir_tela", tela:"reserva", rotulo:"Ver a reserva técnica"});
+      return `Hoje a reserva técnica tem **${fmtN(P.sg)} bens sob guarda**, em ${plural(P.mats, "material", "materiais")}:\n- **${fmtN(P.dp)}** disponíveis para destinar\n- ${fmtN(P.tram)} comprometidos em planos de destinação\n- ${fmtN(P.ent)} já entregues às unidades\n- Valor sob guarda: ${BRL.format(P.val)}${Object.values(S.bens || {}).length ? `\n- ${fmtN(Object.values(S.bens).filter(b => b.situacao === "EM_RESERVA").length)} bens já tombados na reserva` : ""}`; }
+  }
   // 1) montar plano: "monte um plano com 20 cadeiras para a biblioteca central"
   let m = n.match(/(MONTE|MONTAR|CRIE|CRIAR|PREPARE|PREPARAR|FACA|FAZER)\b.*?\b(\d+)\s+(.+?)\s+PARA\s+(O |A |OS |AS )?(.+)$/);
   if (m) {
@@ -3353,9 +3376,10 @@ function localAnswer(q, msg) {
   if (m) {
     const termo = (m[2] && !/^\s/.test(m[2]) ? m[2] : m[1]).replace(/^(DE|DO|DA|OS|AS)\s+/, "").trim();
     const r = tConsultarEstoque({termo});
-    if (!r.encontrados) return `Não encontrei materiais com “${esc(termo.toLowerCase())}” na reserva.`;
+    if (r.encontrados) {
     act({tipo:"abrir_tela", tela:"reserva", busca:termo.toLowerCase(), rotulo:"Ver na reserva técnica"});
     return `Há **${fmtN(r.totais.disponivel)}** disponíveis para destinar (${fmtN(r.totais.sob_guarda)} sob guarda)${r.totais.em_tramite ? `, com ${fmtN(r.totais.em_tramite)} em trâmite` : ""}:\n` + lista(r.materiais, x => `- ${esc(x.descricao)}: **${fmtN(x.disponivel)}**`);
+    }
   }
   // 9) visão geral
   if (/RESUMO|VISAO GERAL|COMO ESTA|SITUACAO|PANORAMA|INDICADOR/.test(n)) {
@@ -3389,7 +3413,7 @@ function localAnswer(q, msg) {
       if (parts.length) return parts.join("\n\n");
     }
   }
-  return `Não encontrei nada sobre isso nos dados do Destina. Experimente perguntar, por exemplo:\n- Quantos ar-condicionados temos?\n- Quais itens têm maior estoque?\n- Quais termos aguardam a minha assinatura?\n- O que está parado há mais tempo?\n- O que foi entregue para o CCS este ano?\n- Monte um plano com 20 cadeiras para a Biblioteca Central\n- Quais planos estão atrasados?\n- Resumo da reserva`;
+  return `Não encontrei nada sobre ${n.split(" ").length <= 6 ? "“" + esc(q.trim()) + "”" : "isso"} nos dados do Destina. Experimente perguntar, por exemplo:\n- Quantos ar-condicionados temos?\n- Quais itens têm maior estoque?\n- Quais termos aguardam a minha assinatura?\n- O que está parado há mais tempo?\n- O que foi entregue para o CCS este ano?\n- Monte um plano com 20 cadeiras para a Biblioteca Central\n- Quais planos estão atrasados?\n- Resumo da reserva`;
 }
 
 // ---------- envio ----------
