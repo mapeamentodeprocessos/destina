@@ -1,0 +1,20 @@
+# Evita que o projeto gratuito do Supabase seja pausado por falta de uso (pausa após 7 dias).
+name: Manter o Supabase ativo
+on:
+  schedule:
+    - cron: "17 11 */3 * *"   # a cada 3 dias, 08h17 em João Pessoa
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sinal de atividade
+        run: |
+          URL=$(grep -oP 'supabaseUrl:\s*"\K[^"]+' config.js)
+          KEY=$(grep -oP 'supabaseAnonKey:\s*"\K[^"]+' config.js)
+          curl -fsS -X POST "$URL/rest/v1/rpc/ping" -H "apikey: $KEY" -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{}'
+          echo
+          echo "Supabase respondeu."

@@ -921,6 +921,7 @@ function traduzErroAuth(j) {
   if (/user_already_exists|already registered/i.test(c + m)) return "Já existe uma conta com esse e-mail. Use “Entrar” ou recupere a senha.";
   if (/weak_password/.test(c) || /Password should/i.test(m)) return "Senha fraca: use pelo menos 8 caracteres, com letras e números.";
   if (/over_email_send_rate_limit|rate limit/i.test(c + m)) return "Muitas tentativas seguidas. Aguarde alguns minutos.";
+  if (/DESTINA_EMAIL|Database error saving new user|unexpected_failure/i.test(c + m)) return "Use o seu e-mail institucional (@ufpb.br). Para cadastrar outro e-mail, peça ao gestor do sistema que o autorize.";
   return m || "Não foi possível concluir. Tente novamente.";
 }
 const SB = {
@@ -1024,10 +1025,10 @@ function vLogin() {
     <div class="seg" role="group" style="margin:14px 0"><button aria-pressed="${tab === "entrar"}" data-act="login-tab" data-k="entrar">Entrar</button><button aria-pressed="${tab === "criar"}" data-act="login-tab" data-k="criar">Criar conta</button><button aria-pressed="${tab === "senha"}" data-act="login-tab" data-k="senha">Esqueci a senha</button></div>
     <form id="f-auth" class="form-grid" style="grid-template-columns:1fr" autocomplete="on">
       ${tab === "criar" ? `<div class="field"><label>Nome completo</label><input class="inp" name="nome" required autocomplete="name"></div>` : ""}
-      <div class="field"><label>E-mail institucional</label><input class="inp" name="email" type="email" required autocomplete="email"></div>
+      <div class="field"><label>E-mail institucional</label><input class="inp" name="email" type="email" required autocomplete="email" placeholder="nome@ufpb.br"></div>
       ${tab !== "senha" ? `<div class="field"><label>Senha</label><input class="inp" name="senha" type="password" required minlength="8" autocomplete="${tab === "criar" ? "new-password" : "current-password"}"></div>` : ""}
       <button class="btn primary" style="margin-top:6px">${tab === "entrar" ? "Entrar" : tab === "criar" ? "Criar conta" : "Enviar link de recuperação"}</button>
-      <p class="small muted" id="auth-msg">${tab === "criar" ? "Depois de criar a conta, o gestor do sistema aprova o acesso e define o seu perfil." : ""}</p>
+      <p class="small muted" id="auth-msg">${tab === "criar" ? "Use o e-mail @ufpb.br. Depois de criar a conta, o gestor do sistema aprova o acesso e define o seu perfil." : ""}</p>
     </form>
     <hr><button class="btn ghost sm" data-act="to-demo">Ver a demonstração com dados fictícios</button></div>`;
 }
@@ -1051,7 +1052,30 @@ function sbPerfisSection() {
   return `<p class="ink2">Cada servidor cria a própria conta na tela de entrada. Aqui você aprova o acesso e marca os perfis. ${pend ? `<b style="color:var(--warn-ink)">${pend} cadastro(s) aguardando aprovação.</b>` : ""}</p>
   <div class="tbl-wrap" style="margin-top:12px"><table class="tbl"><thead><tr><th>Pessoa</th><th style="text-align:center">Aprovado</th>${Object.keys(ROLES).map(r => `<th style="text-align:center;font-size:11px">${esc(ROLES[r].label.replace(" (autorizadora)", ""))}</th>`).join("")}</tr></thead><tbody>
   ${L.map(p => `<tr><td><b>${esc(p.nome || "—")}</b>${p.id === S.me.id ? ' <span class="pill">você</span>' : ""}<div class="small muted">${esc(p.email || "")}</div></td><td style="text-align:center"><input type="checkbox" data-sbp="${p.id}" data-k="aprovado" ${p.aprovado ? "checked" : ""} aria-label="Aprovado"></td>${Object.keys(ROLES).map(r => `<td style="text-align:center"><input type="checkbox" data-sbp="${p.id}" data-k="${r}" ${p.papeis.includes(r) ? "checked" : ""} aria-label="${esc(ROLES[r].label)}"></td>`).join("")}</tr>`).join("")}
-  </tbody></table></div>`;
+  </tbody></table></div>
+  ${has("ADMIN") ? `<hr><h4 style="margin:4px 0 4px">E-mails externos autorizados</h4>
+  <p class="small muted">O cadastro aceita apenas e-mails @ufpb.br (e subdomínios, como @academico.ufpb.br). Autorize aqui, um a um, os e-mails de fora que precisam entrar.</p>
+  <div class="row wrap" style="gap:8px;margin-top:8px"><input class="inp" id="ext-mail" type="email" placeholder="nome@exemplo.com" style="flex:1;min-width:220px" aria-label="E-mail externo a autorizar"><button class="btn" data-act="ext-add">Autorizar e-mail</button></div>
+  <div id="ext-list" class="small" style="margin-top:10px"><span class="muted">Carregando…</span></div>
+  <hr><div class="row wrap"><div style="flex:1;min-width:240px"><b>Cópia de segurança</b><p class="small muted">Baixa todos os dados do Destina (materiais, entradas, planos, assinaturas, entregas, tombamentos, eventos e registros) em um arquivo. Guarde em local seguro da DIPA: o arquivo contém dados pessoais dos recebedores.</p></div><button class="btn" data-act="backup">Baixar cópia de segurança</button></div>` : ""}`;
+}
+async function sbCarregarExternos() {
+  const box = $("#ext-list"); if (!box) return;
+  try {
+    const L = await SB.req("emails_permitidos?select=email,incluido_em&order=email");
+    box.innerHTML = L.length ? L.map(x => `<div class="row" style="justify-content:space-between;border-bottom:1px solid var(--line-2);padding:6px 0"><span>${esc(x.email)}</span><button class="btn ghost sm" data-act="ext-del" data-id="${esc(x.email)}">Remover</button></div>`).join("") : '<span class="muted">Nenhum e-mail externo autorizado.</span>';
+  } catch (e) { box.innerHTML = '<span class="muted">Rode o script 04 no Supabase para ativar esta lista.</span>'; }
+}
+async function sbBackup() {
+  toast("Preparando a cópia de segurança…");
+  const T = ["config","perfis","unidades","estrutura_meta","materiais","lotes","contadores","planos","plano_itens","plano_etapas","eventos","assinaturas","entregas","tombamentos","log_assistente"];
+  try {
+    const out = {sistema:"Destina", gerado_em:new Date().toISOString(), gerado_por:S.me.email || S.me.name, tabelas:{}};
+    for (const t of T) out.tabelas[t] = await SB.all(t, "select=*");
+    const n = Object.values(out.tabelas).reduce((a, x) => a + x.length, 0);
+    await saveFile("destina-backup-" + new Date().toISOString().slice(0, 10) + ".json", JSON.stringify(out, null, 1));
+    toast("Cópia de segurança gerada com " + fmtN(n) + " registros.");
+  } catch (e) { toast("Não foi possível gerar a cópia: " + e.message, true); }
 }
 async function sbSalvarPerfil(uid) {
   const boxes = $$(`[data-sbp="${uid}"]`); const papeis = boxes.filter(b => b.dataset.k !== "aprovado" && b.checked).map(b => b.dataset.k); const ap = boxes.find(b => b.dataset.k === "aprovado").checked;
@@ -1192,7 +1216,7 @@ function render() {
   if (nav && nav.roles && !nav.roles.includes(R())) { S.route = "painel"; }
   const views = {painel:vPainel, reserva:vReserva, planos:vPlanos, plano:vPlano, autorizacoes:vAutorizacoes, entregas:vEntregas, monitoramento:vMonitoramento, documentos:vDocumentos, configuracoes:vConfig};
   v.innerHTML = (views[S.route] || vPainel)();
-  if (S.route === "configuracoes") mountOrgBrowser();
+  if (S.route === "configuracoes") { mountOrgBrowser(); if (S.mode === "oficial") sbCarregarExternos(); }
   if (S.mode === "oficial") resolveNames(collectIds());
   document.title = (S.route === "plano" ? "Plano" : (nav ? nav.l : "Painel")) + " — Destina " + S.cfg.sigla;
 }
@@ -3007,6 +3031,9 @@ document.addEventListener("click", async e => {
     case "save-cfg": saveCfg(); break;
     case "org-import": openOrgImport(); break;
     case "org-reset": { const m = openModal({title:"Restaurar a estrutura da UFPB", body:"<p>A estrutura importada será descartada e o Destina volta a usar a hierarquia SIPAC/UFPB embutida.</p>", foot:`<button class="btn" data-act="close">Voltar</button><button class="btn primary" id="go">Restaurar</button>`}); $("#go", m).onclick = async () => { if (await persistOrg(null)) { closeModal(); toast("Estrutura padrão restaurada."); render(); } }; break; }
+    case "ext-add": { const v = ($("#ext-mail") || {}).value || ""; if (await sbDo("autorizar_email", {p_email:v}, "E-mail autorizado a se cadastrar.")) sbCarregarExternos(); break; }
+    case "ext-del": { if (await sbDo("remover_email", {p_email:id}, "Autorização removida. A conta já criada continua valendo.")) sbCarregarExternos(); break; }
+    case "backup": sbBackup(); break;
     case "reset-demo": { const m = openModal({title:"Restaurar demonstração", body:"<p>Tudo o que foi feito na demonstração neste navegador será substituído pelo cenário de exemplo.</p>", foot:`<button class="btn" data-act="close">Voltar</button><button class="btn danger" id="go">Restaurar</button>`}); $("#go", m).onclick = async () => { S.cfg = CFG_DEFAULT(); S.cfg.signatarios = {PRA:{nome:"Prof. Ricardo Albuquerque", cargo:"Pró-Reitor de Administração"}, REITORIA:{nome:"Prof.ª Helena Cavalcanti", cargo:"Reitora"}}; await seedDemo(); closeModal(); renderShell(); render(); toast("Demonstração restaurada."); }; break; }
     case "rm-user": { const p = clone(S.perfis); delete p[id]; await persistPerfis(p); render(); break; }
   }
