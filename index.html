@@ -402,7 +402,11 @@ textarea.inp{min-height:84px;resize:vertical}
 #as-fab{position:fixed;right:22px;bottom:22px;z-index:60;display:flex;align-items:center;gap:8px;padding:12px 18px 12px 14px;border-radius:99px;border:0;background:var(--brand);color:#fff;font-weight:700;font-size:14px;cursor:pointer;box-shadow:0 8px 28px rgba(11,58,117,.35)}
 :root[data-theme="dark"] #as-fab{background:#2A64B8}
 #as-fab svg{width:20px;height:20px}
-#as-fab.on{display:none}
+#as-fab.on,#as-fab[hidden]{display:none}
+#as-panel.min{top:auto;height:auto;width:320px;animation:none}
+#as-panel.min .as-body,#as-panel.min .as-f,#as-panel.min .as-foot,#as-panel.min #as-clear{display:none}
+#as-panel.min .as-h{border-bottom:0;cursor:pointer}
+@media (max-width:600px){#as-panel.min{left:12px;right:12px;width:auto;bottom:76px}}
 #as-panel{position:fixed;right:16px;bottom:16px;top:16px;width:420px;z-index:90;background:var(--panel);border:1px solid var(--line);border-radius:18px;box-shadow:0 20px 60px rgba(0,0,0,.22);display:flex;flex-direction:column;animation:slide .18s}
 #as-panel[hidden]{display:none}
 .as-h{display:flex;align-items:center;gap:10px;padding:14px 14px 12px 16px;border-bottom:1px solid var(--line)}
@@ -2608,6 +2612,113 @@ function localAnswer(q, msg) {
     act({tipo:"criar_plano", rotulo:"Revisar o plano", rascunho:{unidade:u ? u.name : uni, finalidade:"", justificativa:"", itens:[{material_id:it.material_id, quantidade:Math.min(qtd, it.disponivel)}]}});
     return `Preparei um rascunho com **${fmtN(Math.min(qtd, it.disponivel))}** × ${esc(it.descricao)}${qtd > it.disponivel ? ` (só há ${fmtN(it.disponivel)} disponíveis)` : ""} para **${esc(u ? u.name : uni)}**.${r.encontrados > 1 ? ` Escolhi o material com mais saldo entre ${r.encontrados} parecidos; troque no formulário se precisar.` : ""} Revise e salve.`;
   }
+  // ===== consultas ampliadas: qualquer pergunta sobre os dados do sistema =====
+  const PL = {ENTREGUE:/ENTREGUE|CONCLUID|FINALIZAD/, RASCUNHO:/RASCUNHO/, INSTRUCAO:/INSTRUCAO|FORMALIZ/, AUTORIZADO:/\bAUTORIZADOS?\b/, SEPARACAO:/SEPARAC/, PRONTO:/PRONTOS?\b/, INDEFERIDO:/INDEFERID|NEGAD/, CANCELADO:/CANCELAD/};
+  const plRow = p => `- ${esc(p.numero)} · ${esc(p.unidade)} · ${esc(ST[p.status].l)} · ${fmtN(planQtd(p))} bens · ${BRL.format(planTotal(p))}`;
+  // a) um plano pelo número: "PD 0008/2026", "plano 8", "termo 12"
+  m = n.match(/\b(\d{1,4})\s*\/\s*(\d{4})\b/) || n.match(/\b(?:PLANO|PD|TERMO|PROCESSO DE DESTINACAO)\s*(?:N[O°º]?\s*)?(\d{1,4})\b/);
+  if (m) {
+    const num = String(+m[1]).padStart(4, "0"), ano = m[2];
+    const p = Object.values(S.plans).find(x => { const s = String(x.numero || ""); return s.includes(num + "/") && (!ano || s.includes("/" + ano)); });
+    if (p) {
+      act({tipo:"abrir_plano", plano_id:p.id, rotulo:"Abrir " + p.numero});
+      if (p.status === "AUTORIZACAO" && can.sign(p)) act({tipo:"assinar", plano_id:p.id, rotulo:"Revisar e assinar"});
+      const sig = Object.entries(p.assinaturas || {}).map(([r, a]) => `${S.cfg.signatarios[r] ? S.cfg.signatarios[r].cargo : r} (${nameOf(a.by)}, ${fmtD(a.at)})`);
+      const e = p.entrega;
+      return `**${esc(p.numero)}** · ${esc(ST[p.status].l)}\n- Unidade: ${esc(p.unidade)}\n- ${fmtN(planQtd(p))} bens · ${BRL.format(planTotal(p))}\n` +
+        (p.finalidade ? `- Finalidade: ${esc(p.finalidade)}\n` : "") + (p.processo ? `- Processo: ${esc(p.processo)}\n` : "") +
+        `- Criado por ${esc(nameOf(p.criadoPor))} em ${fmtD(p.criadoEm)}\n` +
+        (STAGES.includes(p.status) && p.status !== "ENTREGUE" ? `- Na etapa há ${daysSince(stageEnteredAt(p))} dias${isLate(p) ? " (acima do prazo)" : ""} · próximo: ${esc(nextResp(p))}\n` : "") +
+        (sig.length ? `- Assinaturas: ${esc(sig.join("; "))}\n` : "") +
+        (e ? `- Entregue em ${fmtD(e.data)} a ${esc(e.recebedor)}${e.local ? " · " + esc(e.local) : ""}\n` : "") +
+        "Itens:\n" + lista(p.itens || [], li => `- ${fmtN(li.qtd)} × ${esc(li.descricao)}${li.vu ? " · " + BRL.format(li.vu) + " un." : ""}`, 10);
+    }
+    if (/\//.test(m[0]) || /PLANO|PD|TERMO/.test(n)) return `Não encontrei o plano ${esc(m[0])}.`;
+  }
+  // b) tombamento
+  m = n.match(/TOMBAMENTO\D{0,6}(\d{3,})/) || n.match(/\b(\d{6,})\b/);
+  if (m) {
+    const t = m[1];
+    for (const p of Object.values(S.plans)) {
+      const tb = p.entrega && p.entrega.tombamentos || {};
+      for (const iid in tb) if ((tb[iid] || []).some(x => String(x).trim() === t)) {
+        const it = S.items[iid];
+        act({tipo:"abrir_plano", plano_id:p.id, rotulo:"Abrir " + p.numero});
+        return `O tombamento **${t}** é ${esc(it ? it.descricao : "um bem")}, entregue pelo ${esc(p.numero)} para **${esc(p.unidade)}** em ${fmtD(p.entrega.data)}, recebido por ${esc(p.entrega.recebedor)}.`;
+      }
+    }
+    if (/TOMBAMENTO/.test(n)) return `O tombamento ${t} não aparece em nenhuma entrega registrada no Destina.`;
+  }
+  // c) valor total
+  if (/VALOR TOTAL|QUANTO VALE|VALOR DA RESERVA|VALOR DO ESTOQUE|VALOR EM ESTOQUE|VALOR SOB GUARDA|VALOR DISPONIVEL/.test(n)) {
+    const st = computeStock(); const its = Object.values(S.items);
+    const vg = its.reduce((a, it) => a + st[it.id].saldo * (it.valorUnitario || 0), 0), vd = its.reduce((a, it) => a + Math.max(0, st[it.id].disp) * (it.valorUnitario || 0), 0);
+    const ve = Object.values(S.plans).filter(p => p.status === "ENTREGUE").reduce((a, p) => a + planTotal(p), 0);
+    const sv = its.filter(it => it.semValor).length;
+    return `**Valores da reserva técnica**\n- Sob guarda: ${BRL.format(vg)}\n- Disponível para destinar: ${BRL.format(vd)}\n- Já entregue: ${BRL.format(ve)}` + (sv ? `\n- ${plural(sv, "material está", "materiais estão")} sem valor unitário e não entram na soma` : "");
+  }
+  // d) categorias
+  const catHit = CATS.find(c => n.includes(normName(c)) || n.includes(normName(c).replace(/A$/, "")));
+  if (/CATEGORIA/.test(n) || catHit && /QUANT|QUAIS|LISTA|TEM|HA\b|ITENS|MATERIAIS|BENS/.test(n)) {
+    const st = computeStock();
+    if (catHit && !/POR CATEGORIA|CADA CATEGORIA|QUAIS CATEGORIAS/.test(n)) {
+      const its = Object.values(S.items).filter(it => it.categoria === catHit).sort((a, b) => st[b.id].saldo - st[a.id].saldo);
+      if (!its.length) return `Não há materiais na categoria ${esc(catHit)}.`;
+      act({tipo:"abrir_tela", tela:"reserva", busca:"", rotulo:"Ver a reserva técnica"});
+      return `**${esc(catHit)}**: ${fmtN(its.reduce((a, it) => a + Math.max(0, st[it.id].disp), 0))} disponíveis de ${fmtN(its.reduce((a, it) => a + st[it.id].saldo, 0))} sob guarda\n` + lista(its, it => `- ${esc(it.descricao)}: **${fmtN(st[it.id].disp)}** disponíveis (${fmtN(st[it.id].saldo)} sob guarda)`, 10);
+    }
+    const g = {}; for (const it of Object.values(S.items)) { const c = it.categoria || "Outros"; const x = g[c] = g[c] || {mat:0, saldo:0, disp:0, valor:0}; x.mat++; x.saldo += st[it.id].saldo; x.disp += Math.max(0, st[it.id].disp); x.valor += st[it.id].saldo * (it.valorUnitario || 0); }
+    const rows = Object.entries(g).sort((a, b) => b[1].saldo - a[1].saldo);
+    if (!rows.length) return "Ainda não há materiais cadastrados.";
+    return "**Reserva por categoria**\n" + rows.map(([c, x]) => `- ${esc(c)}: ${fmtN(x.saldo)} sob guarda, ${fmtN(x.disp)} disponíveis, ${plural(x.mat, "material", "materiais")} · ${BRL.format(x.valor)}`).join("\n");
+  }
+  // e) planos por situação / contagem de planos
+  const stHit = Object.keys(PL).find(k => PL[k].test(n));
+  if (/PLANO|TERMO|PROCESSO/.test(n) && (stHit || /QUANTOS|QUAIS|LISTA|TODOS|ATIVOS|ANDAMENTO/.test(n))) {
+    let ps = Object.values(S.plans).filter(p => !p.legado);
+    if (stHit) ps = ps.filter(p => p.status === stHit);
+    else if (/ATIVOS|ANDAMENTO|ABERTO/.test(n)) ps = ps.filter(p => STAGES.includes(p.status) && p.status !== "ENTREGUE");
+    ps.sort((a, b) => b.criadoEm - a.criadoEm);
+    if (!ps.length) return stHit ? `Nenhum plano está em “${ST[stHit].l}”.` : "Nenhum plano cadastrado.";
+    act({tipo:"abrir_tela", tela:"planos", rotulo:"Abrir planos"});
+    if (!stHit && !/ATIVOS|ANDAMENTO|ABERTO/.test(n)) {
+      const cont = Object.keys(ST).map(k => [k, ps.filter(p => p.status === k).length]).filter(x => x[1]);
+      return `**${plural(ps.length, "plano", "planos")}** no sistema (${BRL.format(ps.reduce((a, p) => a + planTotal(p), 0))}):\n` + cont.map(([k, v]) => `- ${ST[k].l}: ${v}`).join("\n");
+    }
+    return `**${plural(ps.length, "plano", "planos")}**${stHit ? " em “" + ST[stHit].l + "”" : " em andamento"} (${BRL.format(ps.reduce((a, p) => a + planTotal(p), 0))}):\n` + lista(ps, plRow);
+  }
+  // f) unidades que mais receberam
+  if (/UNIDADE|CENTRO|SETOR|ORGAO/.test(n) && /MAIS RECEB|QUE MAIS|RANKING|MAIORES/.test(n)) {
+    const g = {}; for (const p of Object.values(S.plans)) if (p.status === "ENTREGUE") { const x = g[p.unidade] = g[p.unidade] || {q:0, v:0, n:0}; x.q += planQtd(p); x.v += planTotal(p); x.n++; }
+    const rows = Object.entries(g).sort((a, b) => b[1].q - a[1].q);
+    if (!rows.length) return "Ainda não há entregas registradas.";
+    return "**Unidades que mais receberam bens**\n" + lista(rows, ([u, x]) => `- ${esc(u)}: **${fmtN(x.q)}** bens em ${plural(x.n, "entrega")} · ${BRL.format(x.v)}`, 10);
+  }
+  // g) materiais sem valor / sem saldo / esgotados
+  if (/SEM VALOR|SEM PRECO/.test(n)) {
+    const its = Object.values(S.items).filter(it => it.semValor);
+    return its.length ? `**${plural(its.length, "material", "materiais")}** sem valor unitário:\n` + lista(its, it => `- ${esc(it.descricao)}`) : "Todos os materiais têm valor unitário.";
+  }
+  if (/ESGOTAD|SEM SALDO|ZERAD|ACABOU|ACABARAM/.test(n)) {
+    const st = computeStock(); const its = Object.values(S.items).filter(it => st[it.id].disp <= 0);
+    return its.length ? `**${plural(its.length, "material está", "materiais estão")}** sem saldo disponível:\n` + lista(its, it => `- ${esc(it.descricao)} (${fmtN(st[it.id].saldo)} sob guarda, todo em trâmite ou entregue)`) : "Todos os materiais têm saldo disponível.";
+  }
+  // h) usuários, signatários e papéis
+  if (/USUARIO|SIGNATARI|QUEM ASSINA|QUEM AUTORIZA|ADMINISTRADOR|EQUIPE|PERFIS|PAPEIS/.test(n)) {
+    const sg = Object.entries(S.cfg.signatarios || {}).map(([r, x]) => `- ${esc(x.cargo)}: ${esc(x.nome)}`).join("\n");
+    const us = (S.perfisList || []).filter(p => p.aprovado);
+    return "**Signatários**\n" + sg + `\n- Limite de alçada do Pró-Reitor: ${BRL.format(S.cfg.limiteAlcada || 0)}` + (us.length ? "\n\n**Usuários aprovados**\n" + lista(us, p => `- ${esc(p.nome || p.email)}: ${esc(p.papeis.map(r => ROLES[r] ? ROLES[r].label : r).join(", "))}`, 15) : "");
+  }
+  // i) entradas recentes
+  if (/ENTRADA|CHEGOU|CHEGARAM|RECEBIDO|RECEBEMOS|COMPRAD|AQUISIC|EMPENHO|NOTA FISCAL|PREGAO|FORNECEDOR/.test(n)) {
+    const ls = []; for (const it of Object.values(S.items)) for (const l of lotsOf(it)) if (+l.qtd > 0) ls.push({it, l});
+    const termo = n.replace(/.*\b(DE|DO|DA|DOS|DAS)\s+/, "");
+    let sel = ls.filter(x => matchText([x.it.descricao, x.it.fornecedor, x.it.marca, x.l.empenho, x.l.nf, x.l.pregao, x.l.processo].join(" "), termo));
+    if (!sel.length) sel = ls;
+    sel.sort((a, b) => (b.l.data || 0) - (a.l.data || 0));
+    if (!sel.length) return "Não há entradas registradas.";
+    return "**Entradas na reserva** (mais recentes primeiro):\n" + lista(sel, x => `- ${fmtD(x.l.data)} · ${fmtN(x.l.qtd)} × ${esc(x.it.descricao)}${x.l.vu ? " · " + BRL.format(x.l.vu) + " un." : ""}${x.it.fornecedor ? " · " + esc(x.it.fornecedor) : ""}${x.l.empenho ? " · empenho " + esc(x.l.empenho) : ""}${x.l.nf ? " · NF " + esc(x.l.nf) : ""}`, 10);
+  }
   // 2) assinaturas pendentes
   if (/ASSINA|AUTORIZ/.test(n) && /(MINHA|AGUARD|PENDENT|FALTA|PRECISO|TENHO|QUAIS|QUE)/.test(n)) {
     const ps = Object.values(S.plans).filter(p => p.status === "AUTORIZACAO");
@@ -2684,7 +2795,34 @@ function localAnswer(q, msg) {
     const k = tIndicadores();
     return `**Resumo da reserva técnica**\n- ${fmtN(k.bens_disponiveis)} bens disponíveis (${BRL.format(k.valor_disponivel_conhecido)} com valor conhecido)\n- ${fmtN(k.bens_sob_guarda)} bens sob guarda em ${fmtN(k.materiais)} materiais\n- Planos: ${Object.entries(k.planos_por_etapa).filter(([, v]) => v).map(([e, v]) => `${v} ${e.toLowerCase()}`).join(", ") || "nenhum"}\n- ${k.planos_acima_do_prazo.length} acima do prazo · ${k.alertas.length} alertas ativos`;
   }
-  return `Ainda não sei responder isso sem a IA. Experimente perguntas como:\n- Quantos ar-condicionados temos?\n- Quais itens têm maior estoque?\n- Quais termos aguardam a minha assinatura?\n- O que está parado há mais tempo?\n- O que foi entregue para o CCS este ano?\n- Monte um plano com 20 cadeiras para a Biblioteca Central\n- Quais planos estão atrasados?\n- Resumo da reserva`;
+  // j) busca geral em materiais, planos e unidades
+  {
+    const STOP = new Set("O A OS AS UM UMA UNS UMAS DE DO DA DOS DAS EM NO NA NOS NAS POR PARA PRA COM SEM E OU QUE QUAL QUAIS QUANTO QUANTA QUANTOS QUANTAS COMO ONDE QUANDO QUEM TEM TEMOS TER HA EXISTE EXISTEM ESTA ESTAO ME MOSTRE MOSTRA MOSTRAR LISTE LISTA LISTAR SOBRE INFORMACAO INFORMACOES DADOS DADO SISTEMA DESTINA RESERVA TECNICA ESTOQUE QUERO SABER VOCE PODE PODERIA DIGA FALE ME SAO SER FOI FORAM ITEM ITENS MATERIAL MATERIAIS BEM BENS TUDO TODOS TODAS ALGUM ALGUMA AINDA JA MAIS MENOS MUITO NOSSO NOSSA FAVOR POR FAVOR OLA OI BOM DIA TARDE NOITE DETALHES DETALHE".split(" "));
+    const toks = n.split(/[^A-Z0-9]+/).filter(t => t.length > 1 && !STOP.has(t));
+    if (toks.length) {
+      const st = computeStock();
+      const score = hay => toks.reduce((a, t) => a + (matchText(hay, t) ? 1 : 0), 0);
+      const best = (arr, f) => { const sc = arr.map(x => [score(f(x)), x]).filter(x => x[0] > 0); const mx = Math.max(0, ...sc.map(x => x[0])); return sc.filter(x => x[0] === mx).map(x => x[1]); };
+      const mats = best(Object.values(S.items), it => [it.descricao, it.especificacao, it.categoria, it.marca, it.modelo, it.fornecedor, it.localizacao, it.codigo, it.obs].join(" "));
+      const pls = best(Object.values(S.plans), p => [p.numero, p.unidade, planUnitText(p), p.finalidade, p.justificativa, p.processo, ST[p.status].l, ...(p.itens || []).map(i => i.descricao), p.entrega ? p.entrega.recebedor + " " + (p.entrega.local || "") : ""].join(" "));
+      const uns = searchUnits(toks.join(" "), 3);
+      const parts = [];
+      if (mats.length) {
+        mats.sort((a, b) => st[b.id].saldo - st[a.id].saldo);
+        if (mats.length === 1) act({tipo:"abrir_material", material_id:mats[0].id, rotulo:"Abrir " + mats[0].descricao.slice(0, 40)});
+        else act({tipo:"abrir_tela", tela:"reserva", busca:toks.join(" ").toLowerCase(), rotulo:"Ver na reserva técnica"});
+        parts.push(`**Materiais** (${mats.length}):\n` + lista(mats, it => `- ${esc(it.descricao)}: **${fmtN(st[it.id].disp)}** disponíveis, ${fmtN(st[it.id].saldo)} sob guarda, ${fmtN(st[it.id].ent)} entregues${it.localizacao ? " · local: " + esc(it.localizacao) : ""}${it.valorUnitario ? " · " + BRL.format(it.valorUnitario) + " un." : ""}`, 6));
+      }
+      if (pls.length) {
+        pls.sort((a, b) => b.criadoEm - a.criadoEm);
+        if (pls.length <= 3) pls.forEach(p => act({tipo:"abrir_plano", plano_id:p.id, rotulo:"Abrir " + p.numero}));
+        parts.push(`**Planos** (${pls.length}):\n` + lista(pls, plRow, 6));
+      }
+      if (uns.length && !pls.length) parts.push("**Unidades na estrutura da UFPB**:\n" + uns.map(u => `- ${esc(u.name)}${uPathText(u.code) ? " · " + esc(uPathText(u.code)) : ""}`).join("\n"));
+      if (parts.length) return parts.join("\n\n");
+    }
+  }
+  return `Não encontrei nada sobre isso nos dados do Destina. Experimente perguntar, por exemplo:\n- Quantos ar-condicionados temos?\n- Quais itens têm maior estoque?\n- Quais termos aguardam a minha assinatura?\n- O que está parado há mais tempo?\n- O que foi entregue para o CCS este ano?\n- Monte um plano com 20 cadeiras para a Biblioteca Central\n- Quais planos estão atrasados?\n- Resumo da reserva`;
 }
 
 // ---------- envio ----------
@@ -2738,7 +2876,8 @@ function chatSuggestions() {
 function drawFab() {
   let f = $("#as-fab");
   if (!f) { f = document.createElement("button"); f.id = "as-fab"; f.setAttribute("aria-label", "Abrir o assistente"); f.onclick = () => AS.open ? closeChat() : openChat(); document.body.appendChild(f); }
-  f.hidden = S.mode === "oficial" && !S.role;
+  f.hidden = S.mode === "oficial" && (!SB.s || !S.role);
+  if (f.hidden && AS.open) closeChat();
   f.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg><span>Assistente</span>`;
   f.classList.toggle("on", AS.open);
 }
@@ -2746,7 +2885,7 @@ function openChat() {
   AS.open = true;
   let p = $("#as-panel");
   if (!p) { p = document.createElement("aside"); p.id = "as-panel"; p.setAttribute("aria-label", "Assistente do Destina"); document.body.appendChild(p); }
-  p.hidden = false; drawChat(); drawFab();
+  AS.min = false; p.hidden = false; drawChat(); drawFab();
   setTimeout(() => $("#as-in") && $("#as-in").focus(), 50);
 }
 function closeChat() { AS.open = false; const p = $("#as-panel"); if (p) p.hidden = true; drawFab(); }
@@ -2755,7 +2894,7 @@ function drawChat() {
   const keepVal = $("#as-in") ? $("#as-in").value : "";
   p.innerHTML = `
     <div class="as-h"><div class="as-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4z"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg></div><div style="min-width:0;flex:1"><b>Assistente Destina</b><small>${esc(ROLES[R()] ? ROLES[R()].label : "")}</small></div>
-      ${AS.msgs.length ? `<button class="btn ghost sm" id="as-clear">Nova conversa</button>` : ""}<button class="btn ghost icon-btn" id="as-x" aria-label="Fechar">${ic("x")}</button></div>
+      ${AS.msgs.length ? `<button class="btn ghost sm" id="as-clear">Nova conversa</button>` : ""}<button class="btn ghost icon-btn" id="as-min" aria-label="${AS.min ? "Restaurar o assistente" : "Minimizar o assistente"}" title="${AS.min ? "Restaurar" : "Minimizar"}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">${AS.min ? '<path d="M6 15l6-6 6 6"/>' : '<path d="M5 12h14"/>'}</svg></button><button class="btn ghost icon-btn" id="as-x" aria-label="Fechar">${ic("x")}</button></div>
     <div class="as-body" id="as-body">
       ${AS.msgs.length ? "" : `<div class="as-hello"><p><b>Olá${S.me.name ? ", " + esc(String(S.me.name).replace(/^(Prof\.ª|Prof\.)\s*/, "").split(" ")[0]) : ""}.</b> Pergunte sobre saldos, planos, entregas e prazos. Quando fizer sentido, eu ofereço um botão para você ir direto ao ponto. Respondo com cálculo exato sobre os dados do sistema, e tudo fica registrado no log de auditoria.</p><div class="as-sug">${chatSuggestions().map(s => `<button class="as-chip" data-sug="${esc(s)}">${esc(s)}</button>`).join("")}</div></div>`}
       ${AS.msgs.map((m, i) => m.role === "user" ? `<div class="as-m u">${esc(m.text)}</div>` : `<div class="as-m a">${m.text ? mdLite(m.text) : ""}${m.pending && !m.text ? `<p class="as-think"><span></span><span></span><span></span> ${esc(AS.status || "Pensando")}…</p>` : ""}${m.pending && m.text && AS.status ? `<p class="as-think">${esc(AS.status)}…</p>` : ""}${m.err ? `<p class="small" style="color:var(--crit-ink)">${esc(m.err)}</p>` : ""}${m.actions.length ? `<div class="as-acts">${m.actions.map((a, k) => `<button class="btn sm ${k === 0 ? "primary" : ""}" data-act-i="${i}_${k}">${esc(a.rotulo)}</button>`).join("")}</div>` : ""}${!m.pending && m.used.length ? `<div class="as-used">Consultou: ${esc([...new Set(m.used)].join(", ").toLowerCase())}</div>` : ""}</div>`).join("")}
@@ -2763,7 +2902,10 @@ function drawChat() {
     <form class="as-f" id="as-f"><textarea id="as-in" rows="1" placeholder="Pergunte sobre a reserva…" aria-label="Mensagem para o assistente">${esc(keepVal)}</textarea>${AS.busy ? `<button type="button" class="btn" id="as-stop">Parar</button>` : `<button class="btn primary" aria-label="Enviar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg></button>`}</form>
     <p class="as-foot">Respostas calculadas a partir dos dados do Destina. Ações só acontecem com o seu clique.</p>`;
   const b = $("#as-body"); b.scrollTop = b.scrollHeight;
-  $("#as-x").onclick = closeChat;
+  p.classList.toggle("min", !!AS.min);
+  $("#as-x").onclick = e => { e.stopPropagation(); closeChat(); };
+  $("#as-min").onclick = e => { e.stopPropagation(); AS.min = !AS.min; drawChat(); if (!AS.min) setTimeout(() => $("#as-in") && $("#as-in").focus(), 50); };
+  $(".as-h", p).onclick = () => { if (AS.min) { AS.min = false; drawChat(); } };
   if ($("#as-clear")) $("#as-clear").onclick = () => { if (AS.ctl) AS.ctl.abort(); AS.msgs = []; AS.turns = []; drawChat(); };
   if ($("#as-stop")) $("#as-stop").onclick = () => AS.ctl && AS.ctl.abort();
   $("#as-f").onsubmit = e => { e.preventDefault(); const v = $("#as-in").value; $("#as-in").value = ""; askAssistant(v); };
