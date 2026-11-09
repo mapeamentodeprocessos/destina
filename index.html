@@ -3274,9 +3274,9 @@ function nluUnidade(n, qOrig) {
   const up = new Set((qOrig.match(/\b[A-ZÀ-Ú]{2,8}\b/g) || []).map(normName));
   for (const w of n.split(" ")) { const u = NLU.siglas.get(w); if (u && (!AMB.has(w) || up.has(w)) && (w.length >= 3 || up.has(w))) return {u, txt:w}; }
   // 2) nome depois de "para o / do / no / da / pro / ao"
-  const m = n.match(/\b(?:PARA|PRA|PRO|DO|DA|NO|NA|AO|A|O|PELO|PELA)\s+(?:O\s+|A\s+)?((?:[A-Z0-9]+\s?){1,6})$/) || n.match(/\b(?:PARA|PRA|PRO|NO|NA|AO|PELO|PELA|DO|DA)\s+(?:O\s+|A\s+)?((?:[A-Z0-9]+\s?){2,6})/);
+  const m = n.match(/\b(?:PARA|PRA|PRO|DO|DA|NO|NA|AO|PELO|PELA)\s+(?:O\s+|A\s+)?((?:[A-Z0-9]+\s?){1,6})$/) || n.match(/\b(?:PARA|PRA|PRO|NO|NA|AO|PELO|PELA|DO|DA)\s+(?:O\s+|A\s+)?((?:[A-Z0-9]+\s?){2,6})/);
   const DOM = new Set("RESERVA TECNICA ESTOQUE ALMOXARIFADO SISTEMA DESTINA DEPOSITO GALPAO MES SEMANA ANO HOJE ONTEM TOTAL GERAL PLANO PLANOS EMPENHO EMPENHOS UNIDADE UNIDADES BENS BEM ITENS MATERIAIS VALOR PRAZO ETAPA ENTREGA ENTREGAS ASSINATURA REITORA REITORIA PRO REITOR".split(" "));
-  if (m) { let ph = m[1].trim().split(" "); while (ph.length && (DOM.has(ph[0]) || NLU_STOP.has(ph[0]))) ph.shift(); while (ph.length) { const t = ph.join(" "); if (t.length >= 4 && !ph.every(w => DOM.has(w) || NLU_STOP.has(w))) { const r = searchUnits(t, 1)[0]; if (r && normName(r.name + " " + uSigla(r)).includes(ph[0])) return {u:r, txt:t}; } ph.pop(); } }
+  if (m) { let ph = m[1].trim().split(" "); while (ph.length && (DOM.has(ph[0]) || NLU_STOP.has(ph[0]))) ph.shift(); while (ph.length) { const t = ph.join(" "); if (t.length >= 4 && !ph.every(w => DOM.has(w) || NLU_STOP.has(w))) { const r = searchUnits(t, 1)[0]; const ehMat = ph.length <= 2 && (CATS.some(c => normName(c) === t) || Object.values(S.items).some(it => matchText(it.descricao, t))); if (r && !ehMat && normName(r.name + " " + uSigla(r)).includes(ph[0])) return {u:r, txt:t}; } ph.pop(); } }
   return null;
 }
 function nluMaterial(n, excl) {
@@ -3354,7 +3354,7 @@ function nluResponder(nl, msg) {
       if (!matIds) return nluResponder({...nl, intent:"est_total"}, msg);
       const L = its.filter(i => matIds.has(i.id)).sort((a, b) => st[b.id].disp - st[a.id].disp);
       const T = L.reduce((a, i) => ({d:a.d + Math.max(0, st[i.id].disp), g:a.g + st[i.id].saldo, c:a.c + st[i.id].comp + st[i.id].res, e:a.e + st[i.id].ent, v:a.v + Math.max(0, st[i.id].disp) * (i.valorUnitario || 0)}), {d:0, g:0, c:0, e:0, v:0});
-      linhas.push(`Há **${fmtN(T.d)} ${rotMat}** disponíveis para destinar, de ${fmtN(T.g)} sob guarda${T.c ? ` (${fmtN(T.c)} já comprometidos em planos)` : ""}${T.v ? ` · ${BRL.format(T.v)}` : ""}.`);
+      linhas.push(`Em ${esc(rotMat)}: **${fmtN(T.d)} disponíveis** para destinar, de ${fmtN(T.g)} sob guarda${T.c ? ` (${fmtN(T.c)} já comprometidos em planos)` : ""}${T.v ? ` · ${BRL.format(T.v)}` : ""}.`);
       linhas.push(lista(L, i => `- ${esc(i.descricao)}: **${fmtN(Math.max(0, st[i.id].disp))}** disponíveis${i.localizacao ? " · " + esc(i.localizacao) : ""}`));
       const par = L.filter(i => st[i.id].disp > 0 && st[i.id].age && daysSince(st[i.id].age) > 180); if (par.length) atencao.push(`${plural(par.length, "material está", "materiais estão")} com saldo parado há mais de 6 meses.`);
       const tomb = Object.values(S.bens || {}).filter(b => b.situacao === "EM_RESERVA" && matIds.has(b.materialId)).length; if (tomb) linhas.push(`- ${fmtN(tomb)} deles já estão tombados.`);
@@ -3493,8 +3493,8 @@ function nluResponder(nl, msg) {
     }
     case "pode_atender": {
       if (!matIds) return null; const L = its.filter(i => matIds.has(i.id)).sort((a, b) => st[b.id].disp - st[a.id].disp); const d = L.reduce((a, i) => a + Math.max(0, st[i.id].disp), 0), q = E.qtd || 0;
-      if (q && d >= q) { linhas.push(`**Sim.** Há ${fmtN(d)} ${esc(rotMat)} disponíveis; o pedido de ${fmtN(q)} deixa ${fmtN(d - q)} na reserva.`); if (L[0] && st[L[0].id].disp >= q) linhas.push(`- Atende com: ${esc(L[0].descricao)}`); }
-      else linhas.push(`**${q ? "Não totalmente" : "Disponível"}:** há ${fmtN(d)} ${esc(rotMat)} disponíveis${q ? `, faltam ${fmtN(q - d)} para o pedido de ${fmtN(q)}` : ""}.`);
+      if (q && d >= q) { linhas.push(`**Sim.** Em ${esc(rotMat)} há ${fmtN(d)} disponíveis; o pedido de ${fmtN(q)} deixa ${fmtN(d - q)} na reserva.`); if (L[0] && st[L[0].id].disp >= q) linhas.push(`- Atende com: ${esc(L[0].descricao)}`); }
+      else linhas.push(`**${q ? "Não totalmente" : "Disponível"}:** em ${esc(rotMat)} há ${fmtN(d)} disponíveis${q ? `, faltam ${fmtN(q - d)} para o pedido de ${fmtN(q)}` : ""}.`);
       if (q && d < q) sug = d ? `atender parcialmente com ${fmtN(d)} e registrar a demanda restante para a próxima aquisição.` : "registrar a demanda para a próxima aquisição.";
       if (d > 0 && can.createPlan() && L[0]) act({tipo:"criar_plano", rotulo:"Montar o plano", rascunho:{unidade:E.uni ? E.uni.name : "", finalidade:"", justificativa:"", itens:[{material_id:L[0].id, quantidade:Math.min(q || 1, Math.max(0, st[L[0].id].disp))}]}});
       return fecha();
