@@ -3180,7 +3180,7 @@ function runAction(a) {
 const NLU_STOP = new Set("O A OS AS UM UMA UNS UMAS DE DO DA DOS DAS EM NO NA NOS NAS POR PELO PELA PELOS PELAS PARA PRA PRO COM SEM E OU QUE QUAL QUAIS ME MEU MINHA NOS NOSSO NOSSA TEM TEMOS TER HA SAO SER ESTA ESTAO ESTA FOI FORAM VOCE VC FAVOR POR FAVOR AI LA AQUI ISSO ISTO ESSE ESSA ESTE ESTA AO AOS SE JA AINDA SO TAMBEM MAIS MENOS MUITO POUCO COMO ONDE QUANDO QUEM".split(" "));
 const NLU_SIN = {COMPUTADORES:"COMPUTADOR", PC:"COMPUTADOR", PCS:"COMPUTADOR", CPU:"COMPUTADOR", DESKTOP:"COMPUTADOR", DESKTOPS:"COMPUTADOR", LAPTOP:"NOTEBOOK", LAPTOPS:"NOTEBOOK", NOTE:"NOTEBOOK", NOTES:"NOTEBOOK",
   GELADEIRA:"REFRIGERADOR", GELADEIRAS:"REFRIGERADOR", ARES:"AR", CONDICIONADORES:"CONDICIONADO", SPLITS:"SPLIT", TV:"TELEVISOR", TVS:"TELEVISOR", TELEVISAO:"TELEVISOR", TELEVISOES:"TELEVISOR",
-  MANDAMOS:"ENTREGAMOS", MANDOU:"ENTREGOU", ENVIAMOS:"ENTREGAMOS", ENVIADOS:"ENTREGUES", ENVIADAS:"ENTREGUES", MANDADOS:"ENTREGUES", DESTINADOS:"ENTREGUES", DESTINADAS:"ENTREGUES", SAIRAM:"ENTREGUES", SAIU:"ENTREGUE", DISTRIBUIDOS:"ENTREGUES", DISTRIBUIDAS:"ENTREGUES", DOAMOS:"ENTREGAMOS",
+  MANDAMOS:"ENTREGAMOS", MANDOU:"ENTREGOU", ENVIAMOS:"ENTREGAMOS", ENVIADOS:"ENTREGUES", ENVIADAS:"ENTREGUES", MANDADOS:"ENTREGUES", DESTINADOS:"ENTREGUES", DESTINADAS:"ENTREGUES", SAIRAM:"ENTREGUES", SAIU:"ENTREGUE", DISTRIBUIDOS:"ENTREGUES", DISTRIBUIDAS:"ENTREGUES", DOAMOS:"ENTREGAMOS", DOAR:"DESTINAR", DOACAO:"DESTINACAO", REPASSAR:"DESTINAR", ESCOAR:"DESTINAR",
   ESTOQUE:"RESERVA", ALMOXARIFADO:"RESERVA", DEPOSITO:"RESERVA", GALPAO:"RESERVA", SALDO:"DISPONIVEL", SOBRANDO:"DISPONIVEL", SOBRAM:"DISPONIVEL", RESTAM:"DISPONIVEL", LIVRES:"DISPONIVEIS", DISPONIBILIDADE:"DISPONIVEL",
   SETOR:"UNIDADE", SETORES:"UNIDADES", DEPARTAMENTO:"UNIDADE", DEPARTAMENTOS:"UNIDADES", ORGAO:"UNIDADE", ORGAOS:"UNIDADES", CENTROS:"UNIDADES",
   ATRASADO:"ATRASO", ATRASADOS:"ATRASO", ATRASADAS:"ATRASO", PARADOS:"PARADO", PARADAS:"PARADO", ENCALHADO:"PARADO", ENCALHADOS:"PARADO", ANTIGOS:"PARADO", VELHOS:"PARADO",
@@ -3195,7 +3195,7 @@ const NLU_MODELOS = {
   por_categoria:["reserva por categoria","quantos bens por categoria","divisao por categoria","quais categorias temos","categorias da reserva"],
   maiores:["itens com maior estoque","o que mais temos","materiais com maior quantidade","ranking do estoque","top materiais","o que tem mais na reserva","maiores saldos"],
   maiores_valor:["itens de maior valor","materiais mais caros","o que vale mais na reserva","ranking por valor","maior valor parado"],
-  parados:["o que esta parado ha mais tempo","bens parados","materiais mais antigos na reserva","o que nao sai","itens encalhados","o que esta sem destinacao ha muito tempo","bens esquecidos no almoxarifado","o que precisa ser destinado primeiro","prioridade de destinacao"],
+  parados:["o que esta parado ha mais tempo","bens parados","materiais mais antigos na reserva","o que nao sai","itens encalhados","o que esta sem destinacao ha muito tempo","bens esquecidos no almoxarifado","o que precisa ser destinado primeiro","prioridade de destinacao","qual o melhor item para destinar primeiro","o que devo destinar primeiro","o que priorizar","por onde comecar a destinar","o que destinar primeiro"],
   valor:["valor total da reserva","quanto vale a reserva","valor do estoque","valor disponivel","quanto dinheiro temos parado","valor dos bens","valor de <MAT>","quanto vale o <MAT>","valor da <CAT>"],
   entregas:["o que foi entregue <PER>","entregas <PER>","quantos <MAT> foram entregues","quantos <MAT> foram para <UNI>","o que o <UNI> recebeu","o que foi entregue para <UNI> <PER>","para onde foram os <MAT>","quem recebeu <MAT>","entregas para <UNI>","quantos bens entregamos <PER>","o que saiu da reserva <PER>","destinacoes realizadas <PER>","quantos <MAT> entregamos <PER>","historico de entregas","o que <UNI> ja recebeu de <MAT>"],
   top_unidades:["unidades que mais receberam","quem mais recebeu bens","ranking das unidades","quais centros mais receberam","unidades mais atendidas <PER>","maiores beneficiados"],
@@ -3209,7 +3209,7 @@ const NLU_MODELOS = {
   empenhos:["empenhos aguardando tombamento","empenhos recebidos","situacao dos empenhos","o que falta tombar","empenhos pendentes","emplaquetamento pendente","o que falta emplaquetar","empenhos <PER>","bens sem tombamento","notas de empenho em aberto"],
   garantia:["garantia vencendo","itens com garantia a vencer","garantias vencidas","o que perde a garantia","bens fora da garantia"],
   entradas:["o que chegou <PER>","entradas <PER>","ultimas entradas","o que recebemos <PER>","compras recebidas","o que entrou na reserva","novos bens recebidos","chegou <MAT>"],
-  resumo:["resumo da reserva","resumo executivo","como estamos","situacao geral","panorama","relatorio para a reitora","visao geral","me de um resumo","indicadores","balanco geral","como esta a reserva tecnica","informe para o gestor"],
+  resumo:["como esta a reserva <PER>","situacao da reserva <PER>","como estamos <PER>","como esta a reserva hoje","quero saber como esta a reserva","resumo da reserva","resumo executivo","como estamos","situacao geral","panorama","relatorio para a reitora","visao geral","me de um resumo","indicadores","balanco geral","como esta a reserva tecnica","informe para o gestor"],
   evolucao:["evolucao das entregas","entregas por mes","comparativo mensal","tendencia das destinacoes","quantas entregas por mes","historico mensal"],
   pessoas:["quem assina","quem sao os signatarios","quem autoriza","quem sao os usuarios","quem tem acesso","quem e o pro reitor","limite de alcada"]
 };
@@ -3297,8 +3297,8 @@ function nluMaterial(n, excl) {
 function nluEntender(q) {
   nluPrep();
   let n = normName(q).replace(/[?!.,;:()"“”]/g, " ").replace(/\s+/g, " ").trim();
-  n = n.replace(/^(?:(?:OI+|OLA|OPA|E AI|EAI|HELLO|HEY|BOM DIA|BOA TARDE|BOA NOITE|SAUDACOES|PRAZER|TUDO BEM|TUDO BOM|COMO VAI|COMO ESTA|DESTINA|ASSISTENTE)\b\s*)+/, "");
-  if (!n) return {q, n:"", mk:"", ents:{}, intent:null, score:0, rank:[], fixes:[]};
+  n = n.replace(/^(?:(?:OI+|OLA|OPA|E AI|EAI|HELLO|HEY|BOM DIA|BOA TARDE|BOA NOITE|SAUDACOES|PRAZER|TUDO BEM COM VOCE|TUDO BOM COM VOCE|TUDO BEM|TUDO BOM|COMO VAI VOCE|COMO VAI|COMO VOCE ESTA|COMO ESTA VOCE|E VOCE|COM VOCE|DESTINA|ASSISTENTE)\b\s*)+/, "");
+  if (!n || /^(AJUDA|ME AJUDA|ME AJUDE|PODE ME AJUDAR|PODERIA ME AJUDAR|PRECISO DE AJUDA|PRECISO DE UMA INFORMACAO|PRECISO DE INFORMACOES|TENHO UMA DUVIDA|OBRIGAD|VALEU)/.test(n)) return {q, n, mk:"", ents:{}, intent:null, score:0, rank:[], fixes:[]};
   const cor = nluCorrigir(n); n = cor.n;
   const ents = {}; let mk = " " + n + " ";
   let m;
@@ -3582,7 +3582,7 @@ function localAnswerRegras(q, msg) {
     its.forEach(it => { const x = st[it.id]; if (!x) return; sg += x.saldo; dp += Math.max(0, x.disp); ent += x.ent || 0; val += x.saldo * (it.valorUnitario || 0); });
     return {sg, dp, tram:Math.max(0, sg - dp), ent, val, mats:its.filter(it => st[it.id] && st[it.id].saldo > 0).length}; };
   // 0) cumprimentos, agradecimentos e ajuda
-  const SAUD = /^(?:(?:OI+|OLA|OPA|E AI|EAI|HELLO|HEY|BOM DIA|BOA TARDE|BOA NOITE|SAUDACOES|PRAZER|TUDO BEM|TUDO BOM|COMO VAI|COMO ESTA|DESTINA|ASSISTENTE)\b\s*)+/;
+  const SAUD = /^(?:(?:OI+|OLA|OPA|E AI|EAI|HELLO|HEY|BOM DIA|BOA TARDE|BOA NOITE|SAUDACOES|PRAZER|TUDO BEM COM VOCE|TUDO BOM COM VOCE|TUDO BEM|TUDO BOM|COMO VAI VOCE|COMO VAI|COMO VOCE ESTA|COMO ESTA VOCE|E VOCE|COM VOCE|DESTINA|ASSISTENTE)\b\s*)+/;
   const sm = n.match(SAUD);
   if (sm) { const resto = n.slice(sm[0].length).trim(); if (resto.split(" ").length >= 2) n = resto; else {
     const k = tIndicadores(), pend = (k.minhas_pendencias || []).length, P = panorama();
@@ -3590,7 +3590,7 @@ function localAnswerRegras(q, msg) {
     return `${saudacao()}${nome ? ", " + esc(nome) : ""}! ${pend ? `Você tem **${plural(pend, "pendência", "pendências")}** no seu perfil.` : "Você não tem pendências agora."} Hoje a reserva tem **${fmtN(P.sg)} bens sob guarda**, ${fmtN(P.dp)} disponíveis para destinar.\n\nPergunte o que precisar, por exemplo: “quantos ar-condicionados temos?”, “o que aguarda a minha assinatura?” ou “empenhos aguardando tombamento”.`; } }
   if (/^(MUITO )?(OBRIGAD\w*|VALEU|BRIGAD\w*|AGRADEC\w*|GRAT[OA]|PERFEITO|OTIMO|BELEZA|SHOW|OK|CERTO|BLZ)\b/.test(n) && n.split(" ").length <= 4) return "Por nada! Se precisar de mais alguma informação da reserva, é só perguntar.";
   if (/^(TUDO BEM|TUDO BOM|COMO VAI|COMO VOCE ESTA)\b/.test(n)) return `Tudo certo por aqui${nome ? ", " + esc(nome) : ""}. Em que posso ajudar com a reserva técnica?`;
-  if (/^(AJUDA|HELP|MENU|COMANDOS|O QUE (VOCE|VC) (FAZ|SABE|PODE)|COMO (FUNCIONA|TE USAR|USAR)|QUEM (E|EH) VOCE)\b/.test(n))
+  if (/^(AJUDA|HELP|MENU|COMANDOS|ME AJUDA|ME AJUDE|PODE ME AJUDAR|PODERIA ME AJUDAR|PRECISO DE AJUDA|PRECISO DE UMA INFORMACAO|PRECISO DE INFORMACOES|TENHO UMA DUVIDA|UMA DUVIDA|O QUE (VOCE|VC) (FAZ|SABE|PODE)|COMO (FUNCIONA|TE USAR|USAR)|QUEM (E|EH) VOCE)\b/.test(n))
     return "Eu respondo com os dados do Destina e ofereço botões para agir. Você pode perguntar, por exemplo:\n- **Totais:** “quantos bens temos hoje?”, “valor total da reserva”\n- **Materiais:** “quantos ar-condicionados temos?”, “itens com maior estoque”\n- **Planos:** “PD 0008/2026”, “planos em andamento”, “o que aguarda a minha assinatura?”\n- **Empenhos e tombamento:** “2026NE000488”, “empenhos aguardando tombamento”, “tombamento 300120”\n- **Unidades:** “o que foi entregue para o CCS?”, “unidades que mais receberam”\n- **Ações:** “monte um plano com 20 cadeiras para a Biblioteca Central”";
   // 0b) totais gerais: “quantos bens no total eu tenho hoje?”
   if (/\bQUANT|\bTOTAL\b/.test(n)) {
