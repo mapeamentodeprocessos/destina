@@ -2440,7 +2440,7 @@ function interpretarEmpenho(linhas, ehPdf) {
   cab.pregao = pega(/preg[aã]o(?:\s+eletr[oô]nico)?\s*(?:n[º°o.]*)?\s*[:\-]?\s*(\d{1,5}\s*\/\s*\d{2,4})/i).replace(/\s/g, "");
   cab.nf = pega(/(?:nota\s+fiscal|\bNF-?e?\b)\s*(?:n[º°o.]*)?\s*[:\-]?\s*(\d{2,12})/i);
   cab.requisicao = pega(/requisi[cç][aã]o\s*(?:n[º°o.]*)?\s*[:\-]?\s*(\d{1,7}\s*\/\s*\d{2,4})/i).replace(/\s/g, "");
-  for (const r of linhas) { for (let k = 0; k < r.length; k++) { const c = r[k]; const mm = c.match(/^(?:fornecedor|credor|favorecido|raz[aã]o social|contratad[ao])\s*[:\-]?\s*(.*)$/i); if (mm) { const v = (mm[1] || r[k + 1] || "").replace(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/, "").replace(/^[\s\-–:]+|[\s\-–:]+$/g, ""); if (v && !cab.fornecedor && !/^cnpj/i.test(v)) cab.fornecedor = v.slice(0, 120); } } if (cab.fornecedor) break; }
+  for (const r of linhas) { for (let k = 0; k < r.length; k++) { const c = r[k]; const mm = c.match(/^(?:fornecedor|credor|favorecido|raz[aã]o social|contratad[ao])\s*[:\-]?\s*(.*)$/i); if (mm) { const v = (mm[1] || r[k + 1] || "").replace(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/, "").replace(/[\s\-–,]*CNPJ.*$/i, "").replace(/^[\s\-–:]+|[\s\-–:]+$/g, ""); if (v && !cab.fornecedor && !/^cnpj/i.test(v)) cab.fornecedor = v.slice(0, 120); } } if (cab.fornecedor) break; }
   const dt = re => { const v = pega(re); const m = v.match(/(\d{2})\/(\d{2})\/(\d{4})/); return m ? `${m[3]}-${m[2]}-${m[1]}` : ""; };
   cab.dataEmpenho = dt(/(?:data\s+(?:do\s+)?empenho|data\s+de\s+emiss[aã]o|emiss[aã]o)\s*[:\-]?\s*(\d{2}\/\d{2}\/\d{4})/i);
   // 1) tabela com cabeçalho reconhecível
@@ -2448,7 +2448,7 @@ function interpretarEmpenho(linhas, ehPdf) {
   let melhor = null;
   linhas.forEach((r, k) => { const sc = (r.some(ehDesc) ? 2 : 0) + (r.some(ehQtd) ? 2 : 0) + (r.some(ehVu) ? 1 : 0) + (r.some(ehTot) ? 1 : 0); if (sc >= 4 && (!melhor || sc > melhor.sc)) melhor = {k, sc}; });
   const itens = [];
-  const n = v => { if (v === null || v === undefined) return NaN; const s = String(v).replace(/R\$\s?/i, "").trim(); if (!s) return NaN; return parseBR(s); };
+  const n = v => { if (v === null || v === undefined) return NaN; let s = String(v).replace(/R\$\s?/i, "").replace(/\s/g, "").trim(); if (!s) return NaN; if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, ""); return parseBR(s); };
   if (melhor) {
     const h = linhas[melhor.k]; const ci = f => h.findIndex(f);
     const cD = ci(ehDesc), cQ = ci(ehQtd), cV = ci(ehVu), cT = ci(ehTot), cU = ci(ehUm);
