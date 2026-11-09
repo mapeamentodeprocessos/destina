@@ -1073,7 +1073,7 @@ async function connectOfficial() {
   S.officialAvailable = SB.configured;
   if (!SB.configured) { renderShell(); return; }
   const tipo = await sbTokenNoEndereco();
-  if (SB.s && (lsGet("destina_mode") !== "demo" || tipo)) { await enterOfficial(); if (tipo === "recovery") novaSenhaModal(); }
+  if (lsGet("destina_mode") !== "demo" || tipo) { await enterOfficial(); if (tipo === "recovery") novaSenhaModal(); }
   else renderShell();
 }
 let officialSubs = [];
