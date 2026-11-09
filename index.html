@@ -925,8 +925,8 @@ const SB = {
     const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(traduzErroAuth(j)); return j;
   },
   async signIn(email, password) { const j = await this.auth("token?grant_type=password", {email, password}); this.save(this.sessao(j)); return j; },
-  async signUp(email, password, nome) { const j = await this.auth("signup", {email, password, data:{nome}}); if (j.access_token) this.save(this.sessao(j)); return j; },
-  async recover(email) { return this.auth("recover", {email}); },
+  async signUp(email, password, nome) { const j = await this.auth("signup?redirect_to=" + encodeURIComponent(location.origin + location.pathname), {email, password, data:{nome}}); if (j.access_token) this.save(this.sessao(j)); return j; },
+  async recover(email) { return this.auth("recover?redirect_to=" + encodeURIComponent(location.origin + location.pathname), {email}); },
   async refresh() { const j = await this.auth("token?grant_type=refresh_token", {refresh_token:this.s.refresh_token}); this.save(this.sessao(j)); },
   async token() { if (!this.s) return null; if (this.s.expires_at - Date.now() < 90000) { try { await this.refresh(); } catch (e) { this.clear(); return null; } } return this.s.access_token; },
   async req(path, opt = {}) {
