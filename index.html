@@ -941,7 +941,14 @@ const SB = {
 };
 // links de confirmação de e-mail e de recuperação de senha chegam com o token no endereço
 async function sbTokenNoEndereco() {
-  const h = location.hash || ""; if (!/access_token=/.test(h)) return null;
+  const h = location.hash || "";
+  if (/error_description=|error_code=/.test(h)) {
+    const q = new URLSearchParams(h.slice(1)); history.replaceState(null, "", location.pathname + location.search);
+    const c = q.get("error_code") || "", d = (q.get("error_description") || "").replace(/\+/g, " ");
+    const msg = /expired|otp/i.test(c + d) ? "O link de confirmação expirou ou já foi usado. Entre com seu e-mail e senha; se o acesso for recusado, use “Esqueci a senha” para receber um link novo." : "O link de confirmação não funcionou (" + (d || c) + "). Tente entrar com seu e-mail e senha.";
+    setTimeout(() => toast(msg, true), 400); return null;
+  }
+  if (!/access_token=/.test(h)) return null;
   const q = new URLSearchParams(h.slice(1)); history.replaceState(null, "", location.pathname + location.search);
   try { const user = await SB.auth("user", null, "GET", q.get("access_token")); SB.save({access_token:q.get("access_token"), refresh_token:q.get("refresh_token"), expires_at:Date.now() + (+q.get("expires_in") || 3600) * 1000, user}); return q.get("type"); } catch (e) { return null; }
 }
