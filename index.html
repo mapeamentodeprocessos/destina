@@ -3168,7 +3168,407 @@ function runAction(a) {
   }
 }
 // ---------- modo local (sem Claude disponível): respostas exatas para perguntas de quantidade ----------
+// ======== ENTENDIMENTO LOCAL DE LINGUAGEM (sem IA externa e sem chave) ========
+// Em vez de uma lista fixa de perguntas, o assistente:
+//  1) corrige erros de digitação contra o vocabulário do próprio sistema (materiais, unidades, termos);
+//  2) reconhece as "peças" da pergunta: material, categoria, unidade (1.653 da estrutura), período, quantidade,
+//     nº de plano/empenho/tombamento, situação;
+//  3) compara a forma da pergunta com centenas de modelos de pergunta por similaridade (aproximação);
+//  4) calcula a resposta na hora, com os dados atuais. As combinações cobrem milhões de perguntas possíveis.
+// Quando não tem certeza, pergunta "Você quis dizer…?" com opções clicáveis. Lembra o assunto anterior
+// ("e de cadeiras?", "e para o CCS?").
+const NLU_STOP = new Set("O A OS AS UM UMA UNS UMAS DE DO DA DOS DAS EM NO NA NOS NAS POR PELO PELA PELOS PELAS PARA PRA PRO COM SEM E OU QUE QUAL QUAIS ME MEU MINHA NOS NOSSO NOSSA TEM TEMOS TER HA SAO SER ESTA ESTAO ESTA FOI FORAM VOCE VC FAVOR POR FAVOR AI LA AQUI ISSO ISTO ESSE ESSA ESTE ESTA AO AOS SE JA AINDA SO TAMBEM MAIS MENOS MUITO POUCO COMO ONDE QUANDO QUEM".split(" "));
+const NLU_SIN = {COMPUTADORES:"COMPUTADOR", PC:"COMPUTADOR", PCS:"COMPUTADOR", CPU:"COMPUTADOR", DESKTOP:"COMPUTADOR", DESKTOPS:"COMPUTADOR", LAPTOP:"NOTEBOOK", LAPTOPS:"NOTEBOOK", NOTE:"NOTEBOOK", NOTES:"NOTEBOOK",
+  GELADEIRA:"REFRIGERADOR", GELADEIRAS:"REFRIGERADOR", ARES:"AR", CONDICIONADORES:"CONDICIONADO", SPLITS:"SPLIT", TV:"TELEVISOR", TVS:"TELEVISOR", TELEVISAO:"TELEVISOR", TELEVISOES:"TELEVISOR",
+  MANDAMOS:"ENTREGAMOS", MANDOU:"ENTREGOU", ENVIAMOS:"ENTREGAMOS", ENVIADOS:"ENTREGUES", ENVIADAS:"ENTREGUES", MANDADOS:"ENTREGUES", DESTINADOS:"ENTREGUES", DESTINADAS:"ENTREGUES", SAIRAM:"ENTREGUES", SAIU:"ENTREGUE", DISTRIBUIDOS:"ENTREGUES", DISTRIBUIDAS:"ENTREGUES", DOAMOS:"ENTREGAMOS",
+  ESTOQUE:"RESERVA", ALMOXARIFADO:"RESERVA", DEPOSITO:"RESERVA", GALPAO:"RESERVA", SALDO:"DISPONIVEL", SOBRANDO:"DISPONIVEL", SOBRAM:"DISPONIVEL", RESTAM:"DISPONIVEL", LIVRES:"DISPONIVEIS", DISPONIBILIDADE:"DISPONIVEL",
+  SETOR:"UNIDADE", SETORES:"UNIDADES", DEPARTAMENTO:"UNIDADE", DEPARTAMENTOS:"UNIDADES", ORGAO:"UNIDADE", ORGAOS:"UNIDADES", CENTROS:"UNIDADES",
+  ATRASADO:"ATRASO", ATRASADOS:"ATRASO", ATRASADAS:"ATRASO", PARADOS:"PARADO", PARADAS:"PARADO", ENCALHADO:"PARADO", ENCALHADOS:"PARADO", ANTIGOS:"PARADO", VELHOS:"PARADO",
+  PROCESSOS:"PLANOS", PROCESSO:"PLANO", PEDIDOS:"PLANOS", PEDIDO:"PLANO", TERMOS:"PLANOS", TERMO:"PLANO", DESTINACOES:"PLANOS", DESTINACAO:"PLANO",
+  CUSTA:"VALOR", CUSTO:"VALOR", PRECO:"VALOR", VALE:"VALOR", VALEM:"VALOR", DINHEIRO:"VALOR", REAIS:"VALOR"};
+const NLU_MESES = ["JANEIRO","FEVEREIRO","MARCO","ABRIL","MAIO","JUNHO","JULHO","AGOSTO","SETEMBRO","OUTUBRO","NOVEMBRO","DEZEMBRO"];
+// modelos de pergunta (<MAT> material, <CAT> categoria, <UNI> unidade, <PER> período, <QTD> quantidade, <SIT> situação)
+const NLU_MODELOS = {
+  est_material:["quantos <MAT> temos","quantas <MAT> tem na reserva","tem <MAT> disponivel","saldo de <MAT>","quantidade de <MAT>","estoque de <MAT>","ainda temos <MAT>","quantos <MAT> disponiveis","existe <MAT>","temos <MAT> sobrando","quanto de <MAT> ainda resta","situacao de <MAT>","<MAT> disponivel","como esta o <MAT>","onde estao os <MAT>","qual a localizacao de <MAT>","informacoes sobre <MAT>","me fala do <MAT>"],
+  est_categoria:["quantos itens de <CAT>","como esta a <CAT>","o que temos de <CAT>","materiais de <CAT>","bens de <CAT> disponiveis","saldo de <CAT>"],
+  est_total:["quantos bens temos","quantos bens no total","total de bens na reserva","tamanho da reserva","quantos itens temos hoje","quanto temos guardado","quantidade total de bens","quantos materiais temos","inventario geral da reserva","total geral"],
+  por_categoria:["reserva por categoria","quantos bens por categoria","divisao por categoria","quais categorias temos","categorias da reserva"],
+  maiores:["itens com maior estoque","o que mais temos","materiais com maior quantidade","ranking do estoque","top materiais","o que tem mais na reserva","maiores saldos"],
+  maiores_valor:["itens de maior valor","materiais mais caros","o que vale mais na reserva","ranking por valor","maior valor parado"],
+  parados:["o que esta parado ha mais tempo","bens parados","materiais mais antigos na reserva","o que nao sai","itens encalhados","o que esta sem destinacao ha muito tempo","bens esquecidos no almoxarifado","o que precisa ser destinado primeiro","prioridade de destinacao"],
+  valor:["valor total da reserva","quanto vale a reserva","valor do estoque","valor disponivel","quanto dinheiro temos parado","valor dos bens","valor de <MAT>","quanto vale o <MAT>","valor da <CAT>"],
+  entregas:["o que foi entregue <PER>","entregas <PER>","quantos <MAT> foram entregues","quantos <MAT> foram para <UNI>","o que o <UNI> recebeu","o que foi entregue para <UNI> <PER>","para onde foram os <MAT>","quem recebeu <MAT>","entregas para <UNI>","quantos bens entregamos <PER>","o que saiu da reserva <PER>","destinacoes realizadas <PER>","quantos <MAT> entregamos <PER>","historico de entregas","o que <UNI> ja recebeu de <MAT>"],
+  top_unidades:["unidades que mais receberam","quem mais recebeu bens","ranking das unidades","quais centros mais receberam","unidades mais atendidas <PER>","maiores beneficiados"],
+  unidade_info:["como esta o <UNI>","situacao do <UNI>","o que tem para o <UNI>","planos do <UNI>","o que o <UNI> pediu","demandas do <UNI>","<UNI>"],
+  planos:["quantos planos temos","planos em andamento","lista de planos","planos <SIT>","quais planos estao <SIT>","quantos planos <SIT>","planos ativos","processos de destinacao abertos","situacao dos planos","como estao os planos"],
+  assinaturas:["o que aguarda minha assinatura","termos para assinar","quais termos aguardam assinatura","pendencias de assinatura","o que falta assinar","autorizacoes pendentes","o que a reitora precisa assinar","o que o pro reitor precisa assinar","tenho algo para assinar"],
+  atrasos:["planos atrasados","o que esta atrasado","planos acima do prazo","gargalos","onde esta travado","o que esta demorando","prazos estourados","quais etapas estao lentas"],
+  operacao:["o que esta pronto para entregar","o que separar hoje","o que o almoxarifado precisa separar","entregas pendentes","o que falta entregar","fila de separacao","proximas entregas"],
+  pendencias:["minhas pendencias","o que eu preciso fazer","o que tenho para hoje","tarefas pendentes","o que depende de mim"],
+  pode_atender:["da para atender <QTD> <MAT>","consigo entregar <QTD> <MAT> para <UNI>","temos <QTD> <MAT> para <UNI>","e possivel destinar <QTD> <MAT>","tem <QTD> <MAT> disponiveis","podemos atender o pedido de <QTD> <MAT>"],
+  empenhos:["empenhos aguardando tombamento","empenhos recebidos","situacao dos empenhos","o que falta tombar","empenhos pendentes","emplaquetamento pendente","o que falta emplaquetar","empenhos <PER>","bens sem tombamento","notas de empenho em aberto"],
+  garantia:["garantia vencendo","itens com garantia a vencer","garantias vencidas","o que perde a garantia","bens fora da garantia"],
+  entradas:["o que chegou <PER>","entradas <PER>","ultimas entradas","o que recebemos <PER>","compras recebidas","o que entrou na reserva","novos bens recebidos","chegou <MAT>"],
+  resumo:["resumo da reserva","resumo executivo","como estamos","situacao geral","panorama","relatorio para a reitora","visao geral","me de um resumo","indicadores","balanco geral","como esta a reserva tecnica","informe para o gestor"],
+  evolucao:["evolucao das entregas","entregas por mes","comparativo mensal","tendencia das destinacoes","quantas entregas por mes","historico mensal"],
+  pessoas:["quem assina","quem sao os signatarios","quem autoriza","quem sao os usuarios","quem tem acesso","quem e o pro reitor","limite de alcada"]
+};
+const NLU = {vocab:null, siglas:null, idf:null, modelos:null};
+function nluPrep() {
+  if (NLU.modelos && NLU.nItems === Object.keys(S.items).length) return;
+  NLU.nItems = Object.keys(S.items).length;
+  const V = new Set();
+  const add = t => normName(t).split(/[^A-Z0-9]+/).forEach(w => { if (w.length >= 3 && !/^\d+$/.test(w)) V.add(w); });
+  Object.values(S.items).forEach(it => { add(it.descricao); add(it.categoria); add(it.marca || ""); });
+  CATS.forEach(add); ORG.list.forEach(u => add(u.name));
+  Object.values(NLU_MODELOS).flat().forEach(add); Object.keys(NLU_SIN).forEach(add); Object.values(NLU_SIN).forEach(add); NLU_MESES.forEach(add);
+  "HOJE ONTEM SEMANA PASSADA PASSADO ULTIMOS ULTIMAS DIAS MESES ANO ENTREGUE ENTREGUES RESERVA DISPONIVEL DISPONIVEIS PLANO PLANOS EMPENHO EMPENHOS TOMBAMENTO TOMBAMENTOS ASSINATURA ASSINAR".split(" ").forEach(w => V.add(w));
+  NLU.vocab = [...V];
+  NLU.siglas = new Map(); ORG.list.forEach(u => { const s = normName(uSigla(u)).split("/")[0]; if (s && s.length >= 2 && (!NLU.siglas.has(s) || u.path.length < NLU.siglas.get(s).path.length)) NLU.siglas.set(s, u); });
+  // modelos já normalizados + idf das palavras
+  const df = {}; let N = 0;
+  NLU.modelos = Object.entries(NLU_MODELOS).flatMap(([intent, ex]) => ex.map(e => { const toks = nluToks(normName(e).replace(/<(\w+)>/g, " <$1> ")); N++; new Set(toks).forEach(t => df[t] = (df[t] || 0) + 1); return {intent, e, toks}; }));
+  NLU.idf = t => Math.log(1 + N / (1 + (df[t] || 0)));
+}
+const nluToks = s => s.split(/\s+/).filter(t => t && (t[0] === "<" || (!NLU_STOP.has(t) && t.length > 1))).map(t => NLU_SIN[t] || t).map(t => t[0] === "<" ? t : t.length > 5 ? t.replace(/(ES|S)$/, "") : t);
+function nluDist(a, b, max) { // Damerau-Levenshtein com corte
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  const d = Array.from({length:a.length + 1}, (_, i) => [i, ...Array(b.length).fill(0)]); for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) { let lo = Infinity; for (let j = 1; j <= b.length; j++) { const c = a[i - 1] === b[j - 1] ? 0 : 1; d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + c); if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1); lo = Math.min(lo, d[i][j]); } if (lo > max) return max + 1; }
+  return d[a.length][b.length];
+}
+function nluCorrigir(n) {
+  const set = NLU.setV || (NLU.setV = new Set(NLU.vocab));
+  if (NLU.setV.size !== NLU.vocab.length) NLU.setV = new Set(NLU.vocab);
+  const fixes = [];
+  const out = n.split(" ").map(w => {
+    if (w.length < 4 || /\d/.test(w) || NLU_STOP.has(w) || NLU.setV.has(w) || NLU_SIN[w] || NLU.siglas.has(w)) return w;
+    const max = w.length >= 8 ? 2 : 1; let best = null, bd = max + 1;
+    for (const v of NLU.vocab) { if (Math.abs(v.length - w.length) > max || v[0] !== w[0] && w.length < 7) continue; const dd = nluDist(w, v, max); if (dd < bd) { bd = dd; best = v; if (dd === 1 && max === 1) break; } }
+    if (best && bd <= max) { fixes.push([w, best]); return best; }
+    return w;
+  });
+  return {n:out.join(" "), fixes};
+}
+function nluPeriodo(n) {
+  const d0 = t => { const x = new Date(t); x.setHours(0, 0, 0, 0); return x.getTime(); };
+  const hoje = d0(now()), dt = new Date(hoje); let m;
+  const ret = (de, ate, rot, re) => ({de, ate, rot, re});
+  if (/\bHOJE\b/.test(n)) return ret(hoje, hoje + DAY, "hoje", /\bHOJE\b/);
+  if (/\bONTEM\b/.test(n)) return ret(hoje - DAY, hoje, "ontem", /\bONTEM\b/);
+  if ((m = n.match(/\bULTIM[OA]S\s+(\d{1,3})\s+(DIAS|SEMANAS|MESES)\b/))) { const k = +m[1] * (m[2] === "DIAS" ? 1 : m[2] === "SEMANAS" ? 7 : 30); return ret(hoje - k * DAY, hoje + DAY, `nos últimos ${m[1]} ${m[2].toLowerCase()}`, new RegExp(m[0])); }
+  if (/SEMANA PASSADA|ULTIMA SEMANA/.test(n)) { const s = hoje - ((dt.getDay() + 6) % 7) * DAY; return ret(s - 7 * DAY, s, "na semana passada", /SEMANA PASSADA|ULTIMA SEMANA/); }
+  if (/(EST|NEST|ESS|NESS)A SEMANA/.test(n)) { const s = hoje - ((dt.getDay() + 6) % 7) * DAY; return ret(s, hoje + DAY, "nesta semana", /(EST|NEST|ESS|NESS)A SEMANA/); }
+  if (/MES PASSADO|ULTIMO MES|MES ANTERIOR/.test(n)) { const a = new Date(dt.getFullYear(), dt.getMonth() - 1, 1).getTime(), b = new Date(dt.getFullYear(), dt.getMonth(), 1).getTime(); return ret(a, b, "no mês passado", /MES PASSADO|ULTIMO MES|MES ANTERIOR/); }
+  if (/(EST|NEST|ESS|NESS)E MES|NO MES\b|DO MES\b/.test(n)) return ret(new Date(dt.getFullYear(), dt.getMonth(), 1).getTime(), hoje + DAY, "neste mês", /(EST|NEST|ESS|NESS)E MES|NO MES\b|DO MES\b/);
+  if (/ANO PASSADO|ULTIMO ANO/.test(n)) return ret(new Date(dt.getFullYear() - 1, 0, 1).getTime(), new Date(dt.getFullYear(), 0, 1).getTime(), "no ano passado", /ANO PASSADO|ULTIMO ANO/);
+  if (/(EST|NEST|ESS|NESS)E ANO|NO ANO\b/.test(n)) return ret(new Date(dt.getFullYear(), 0, 1).getTime(), hoje + DAY, "neste ano", /(EST|NEST|ESS|NESS)E ANO|NO ANO\b/);
+  for (let i = 0; i < 12; i++) { const re = new RegExp("\\b(EM |DE |NO MES DE )?" + NLU_MESES[i] + "(\\s+(DE\\s+)?(20\\d{2}))?\\b"); if ((m = n.match(re))) { let y = m[4] ? +m[4] : dt.getFullYear(); if (!m[4] && i > dt.getMonth()) y--; return ret(new Date(y, i, 1).getTime(), new Date(y, i + 1, 1).getTime(), `em ${NLU_MESES[i].toLowerCase().replace("marco", "março")} de ${y}`, re); } }
+  if ((m = n.match(/\b(EM|DE|NO ANO DE)\s+(20\d{2})\b/))) return ret(new Date(+m[2], 0, 1).getTime(), new Date(+m[2] + 1, 0, 1).getTime(), "em " + m[2], new RegExp(m[0]));
+  return null;
+}
+function nluUnidade(n, qOrig) {
+  // 1) sigla (CCS, CCEN, STI…): siglas que também são palavras comuns só valem se escritas em maiúsculas
+  const AMB = new Set(["PRA","SE","DA","DE","NA","NO","AO","OU","UM","CE","PE","RE","TI","CI","CA"]);
+  const up = new Set((qOrig.match(/\b[A-ZÀ-Ú]{2,8}\b/g) || []).map(normName));
+  for (const w of n.split(" ")) { const u = NLU.siglas.get(w); if (u && (!AMB.has(w) || up.has(w)) && (w.length >= 3 || up.has(w))) return {u, txt:w}; }
+  // 2) nome depois de "para o / do / no / da / pro / ao"
+  const m = n.match(/\b(?:PARA|PRA|PRO|DO|DA|NO|NA|AO|A|O|PELO|PELA)\s+(?:O\s+|A\s+)?((?:[A-Z0-9]+\s?){1,6})$/) || n.match(/\b(?:PARA|PRA|PRO|NO|NA|AO|PELO|PELA|DO|DA)\s+(?:O\s+|A\s+)?((?:[A-Z0-9]+\s?){2,6})/);
+  if (m) { let ph = m[1].trim().split(" "); while (ph.length) { const t = ph.join(" "); if (t.length >= 4 && !NLU_STOP.has(t)) { const r = searchUnits(t, 1)[0]; if (r) return {u:r, txt:t}; } ph.pop(); } }
+  return null;
+}
+function nluMaterial(n, excl) {
+  const ws = n.split(" ").filter(w => w && !excl.has(w));
+  const skip = new Set([...NLU_STOP, "QUANTOS","QUANTAS","QUANTO","QUANTA","QUANTIDADE","TOTAL","BENS","BEM","ITENS","ITEM","MATERIAIS","MATERIAL","RESERVA","TECNICA","DISPONIVEL","DISPONIVEIS","ENTREGUE","ENTREGUES","ENTREGAMOS","FORAM","FOI","VALOR","PLANO","PLANOS","UNIDADE","UNIDADES","HOJE","AGORA","TEMOS","TENHO","HA","EXISTE","SALDO","ESTOQUE","AINDA","DA","SITUACAO","INFORMACOES","ONDE","LOCALIZACAO","SOBRANDO","CHEGOU","RECEBEMOS","RECEBEU","QUEM","PARADO","ATENDER","CONSIGO","POSSIVEL","DESTINAR","DAR","ENTREGAR","MANDAR","PEDIDO","DEU","FALA","FALE","SOBRE"]);
+  const cont = ws.filter(w => !skip.has(w) && !/^\d+$/.test(w));
+  for (let L = Math.min(4, cont.length); L >= 1; L--) for (let i = 0; i + L <= cont.length; i++) {
+    const ph = cont.slice(i, i + L).map(w => NLU_SIN[w] || w).join(" ");
+    if (ph.length < 3) continue;
+    const cat = CATS.find(c => normName(c) === ph || normName(c).startsWith(ph) && ph.length >= 5);
+    if (cat && L === 1) return {cat, txt:cont.slice(i, i + L).join(" ")};
+    const its = Object.values(S.items).filter(it => matchText(it.descricao + " " + (it.marca || "") + " " + (it.modelo || ""), ph));
+    if (its.length) return {its, txt:cont.slice(i, i + L).join(" "), termo:ph};
+  }
+  return null;
+}
+function nluEntender(q) {
+  nluPrep();
+  let n = normName(q).replace(/[?!.,;:()"“”]/g, " ").replace(/\s+/g, " ").trim();
+  n = n.replace(/^(OI+|OLA|OPA|BOM DIA|BOA TARDE|BOA NOITE|E AI)\b\s*/, "");
+  const cor = nluCorrigir(n); n = cor.n;
+  const ents = {}; let mk = " " + n + " ";
+  let m;
+  if ((m = n.match(/\b(\d{1,4})\s*\/\s*(20\d{2})\b/)) && /PLANO|PD|TERMO|PROCESSO DE DEST/.test(n)) ents.plano = m[0];
+  if ((m = n.match(/\b(20\d{2})\s*NE\s*0*(\d{1,6})\b/))) ents.emp = m[1] + "NE" + m[2].padStart(6, "0");
+  else if ((m = n.match(/EMPENHO\s+(?:N\w*\s+)?(\d{1,6}\s*\/\s*20\d{2})/))) ents.emp = m[1].replace(/\s/g, "");
+  if ((m = n.match(/TOMBAMENTO\D{0,6}(\d{3,})/) || n.match(/\b(\d{6,})\b/))) ents.tomb = m[1];
+  const per = nluPeriodo(n); if (per) { ents.per = per; mk = mk.replace(per.re, " <PER> "); }
+  const uni = nluUnidade(n, q); if (uni) { ents.uni = uni.u; mk = mk.replace(new RegExp("\\b" + uni.txt + "\\b"), " <UNI> "); }
+  const excl = new Set([...(uni ? uni.txt.split(" ") : []), ...(per ? (n.match(per.re) || [""])[0].split(" ") : [])]);
+  const mat = nluMaterial(n, excl);
+  if (mat && mat.cat) { ents.cat = mat.cat; mk = mk.replace(new RegExp("\\b" + mat.txt + "\\b"), " <CAT> "); }
+  else if (mat) { ents.mat = mat; mk = mk.replace(new RegExp("\\b" + mat.txt + "\\b"), " <MAT> "); }
+  if ((m = n.match(/\b(\d{1,5})\b/)) && !ents.tomb && !(ents.plano && ents.plano.startsWith(m[1]))) { const v = +m[1]; if (v > 0 && v < 100000 && !/20\d{2}/.test(m[1])) { ents.qtd = v; mk = mk.replace(new RegExp("\\b" + m[1] + "\\b"), " <QTD> "); } }
+  const sit = Object.entries({ENTREGUE:/ENTREGUES?\b(?! PARA)/, RASCUNHO:/RASCUNHO/, INSTRUCAO:/INSTRUCAO|FORMALIZ/, AUTORIZACAO:/AGUARDANDO (AUTORIZ|ASSINAT)/, AUTORIZADO:/\bAUTORIZADOS?\b/, SEPARACAO:/SEPARAC/, PRONTO:/PRONTOS?\b/, INDEFERIDO:/INDEFERID|NEGAD/, CANCELADO:/CANCELAD/}).find(([k, re]) => re.test(n));
+  if (sit && /PLANO|TERMO|PROCESSO|PEDIDO/.test(n)) { ents.sit = sit[0]; mk = mk.replace(sit[1], " <SIT> "); }
+  // classificação por semelhança com os modelos (palavras com peso idf + trigramas)
+  const qt = nluToks(mk.trim().replace(/\s+/g, " "));
+  const tri = s => { const o = new Map(); const t = " " + s + " "; for (let i = 0; i < t.length - 2; i++) { const g = t.slice(i, i + 3); o.set(g, (o.get(g) || 0) + 1); } return o; };
+  const cos = (a, b) => { let d = 0, na = 0, nb = 0; a.forEach((v, k) => { na += v * v; if (b.has(k)) d += v * b.get(k); }); b.forEach(v => nb += v * v); return d / (Math.sqrt(na * nb) || 1); };
+  const qs = qt.join(" "), qtri = tri(qs), qset = new Set(qt);
+  const best = {};
+  for (const md of NLU.modelos) {
+    const es = new Set(md.toks); let inter = 0, wq = 0, we = 0;
+    qset.forEach(t => { const w = NLU.idf(t); wq += w; if (es.has(t)) inter += w; }); es.forEach(t => { we += NLU.idf(t); });
+    let sc = (inter / Math.sqrt((wq || 1) * (we || 1))) * 0.7 + cos(qtri, tri(md.toks.join(" "))) * 0.3;
+    // coerência com as peças encontradas
+    const need = md.e.match(/<\w+>/g) || [];
+    need.forEach(p => { const k = {"<MAT>":"mat","<CAT>":"cat","<UNI>":"uni","<PER>":"per","<QTD>":"qtd","<SIT>":"sit"}[p]; if (!ents[k]) sc -= 0.12; else sc += 0.04; });
+    if (!best[md.intent] || sc > best[md.intent].sc) best[md.intent] = {sc, e:md.e};
+  }
+  const rank = Object.entries(best).map(([intent, x]) => ({intent, sc:x.sc, e:x.e})).sort((a, b) => b.sc - a.sc);
+  let intent = rank[0] ? rank[0].intent : null, score = rank[0] ? rank[0].sc : 0;
+  // peças decisivas
+  if (ents.plano) { intent = "plano_detalhe"; score = 1; }
+  else if (ents.emp) { intent = "empenho_detalhe"; score = 1; }
+  else if (ents.tomb && /TOMBAMENTO|PLAQUETA|PATRIMONIO|\bN\w* \d/.test(n) || ents.tomb && qt.length <= 2) { intent = "tombamento"; score = 1; }
+  return {q, n, mk:mk.trim(), ents, intent, score, rank:rank.slice(0, 4), fixes:cor.fixes};
+}
+
+// ---------- respostas ----------
+function nluResponder(nl, msg) {
+  const E = nl.ents, act = a => { if (actionAllowed(a)) msg.actions.push(a); };
+  const st = computeStock(); const its = Object.values(S.items);
+  const lista = (arr, f, max = 6) => arr.slice(0, max).map(f).join("\n") + (arr.length > max ? `\n- e mais ${arr.length - max}…` : "");
+  const atencao = [], linhas = []; let sug = "";
+  const fecha = () => [linhas.join("\n"), atencao.length ? "\n**Atenção:**\n" + atencao.map(a => "- " + a).join("\n") : "", sug ? "\n**Sugestão:** " + sug : ""].filter(Boolean).join("\n");
+  const naUni = (p, u) => matchText(planUnitText(p), u.name) || (uSigla(u) && normName(planUnitText(p)).includes(normName(uSigla(u))));
+  const uNome = u => uSigla(u) ? `${uSigla(u)}` : u.name;
+  const entregas = () => Object.values(S.plans).filter(p => p.status === "ENTREGUE" && p.entrega && (!E.per || p.entrega.data >= E.per.de && p.entrega.data < E.per.ate) && (!E.uni || naUni(p, E.uni)));
+  const matIds = E.mat ? new Set(E.mat.its.map(i => i.id)) : E.cat ? new Set(its.filter(i => i.categoria === E.cat).map(i => i.id)) : null;
+  const rotMat = E.mat ? E.mat.txt.toLowerCase() : E.cat ? E.cat.toLowerCase() : "";
+  switch (nl.intent) {
+    case "est_material": case "est_categoria": {
+      if (!matIds) return nluResponder({...nl, intent:"est_total"}, msg);
+      const L = its.filter(i => matIds.has(i.id)).sort((a, b) => st[b.id].disp - st[a.id].disp);
+      const T = L.reduce((a, i) => ({d:a.d + Math.max(0, st[i.id].disp), g:a.g + st[i.id].saldo, c:a.c + st[i.id].comp + st[i.id].res, e:a.e + st[i.id].ent, v:a.v + Math.max(0, st[i.id].disp) * (i.valorUnitario || 0)}), {d:0, g:0, c:0, e:0, v:0});
+      linhas.push(`Há **${fmtN(T.d)} ${rotMat}** disponíveis para destinar, de ${fmtN(T.g)} sob guarda${T.c ? ` (${fmtN(T.c)} já comprometidos em planos)` : ""}${T.v ? ` · ${BRL.format(T.v)}` : ""}.`);
+      linhas.push(lista(L, i => `- ${esc(i.descricao)}: **${fmtN(Math.max(0, st[i.id].disp))}** disponíveis${i.localizacao ? " · " + esc(i.localizacao) : ""}`));
+      const par = L.filter(i => st[i.id].disp > 0 && st[i.id].age && daysSince(st[i.id].age) > 180); if (par.length) atencao.push(`${plural(par.length, "material está", "materiais estão")} com saldo parado há mais de 6 meses.`);
+      const tomb = Object.values(S.bens || {}).filter(b => b.situacao === "EM_RESERVA" && matIds.has(b.materialId)).length; if (tomb) linhas.push(`- ${fmtN(tomb)} deles já estão tombados.`);
+      if (T.e) linhas.push(`- Já foram entregues ${fmtN(T.e)} às unidades.`);
+      if (T.d === 0 && T.g > 0) atencao.push("Todo o saldo está comprometido em planos; novos pedidos dependem de nova aquisição.");
+      if (L.length === 1) act({tipo:"abrir_material", material_id:L[0].id, rotulo:"Abrir o material"}); else act({tipo:"abrir_tela", tela:"reserva", busca:(E.mat ? E.mat.termo : "").toLowerCase(), rotulo:"Ver na reserva"});
+      if (T.d > 0 && can.createPlan()) { act({tipo:"criar_plano", rotulo:"Montar plano de destinação", rascunho:{unidade:"", finalidade:"", justificativa:"", itens:[{material_id:L[0].id, quantidade:Math.min(Math.max(0, st[L[0].id].disp), 10)}]}}); }
+      return fecha();
+    }
+    case "est_total": case "resumo": {
+      const k = tIndicadores(); let g = 0, d = 0, c = 0, e = 0, v = 0; its.forEach(i => { const x = st[i.id]; g += x.saldo; d += Math.max(0, x.disp); c += x.comp + x.res; e += x.ent; v += x.saldo * (i.valorUnitario || 0); });
+      linhas.push(`A reserva técnica tem **${fmtN(g)} bens sob guarda** (${BRL.format(v)}), em ${plural(its.filter(i => st[i.id].saldo > 0).length, "material", "materiais")}.`);
+      linhas.push(`- **${fmtN(d)}** disponíveis para destinar · ${fmtN(c)} comprometidos em planos · ${fmtN(e)} já entregues`);
+      const ativos = Object.values(S.plans).filter(p => STAGES.includes(p.status) && p.status !== "ENTREGUE" && !p.legado);
+      if (nl.intent === "resumo" || ativos.length) linhas.push(`- ${plural(ativos.length, "plano em andamento", "planos em andamento")} (${BRL.format(ativos.reduce((a, p) => a + planTotal(p), 0))})`);
+      const mes = Object.values(S.plans).filter(p => p.status === "ENTREGUE" && p.entrega && p.entrega.data >= new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime());
+      if (nl.intent === "resumo") linhas.push(`- Entregues neste mês: ${fmtN(mes.reduce((a, p) => a + planQtd(p), 0))} bens em ${plural(mes.length, "plano", "planos")}`);
+      const aut = Object.values(S.plans).filter(p => p.status === "AUTORIZACAO"); if (aut.length) atencao.push(`${plural(aut.length, "termo aguarda", "termos aguardam")} assinatura (${BRL.format(aut.reduce((a, p) => a + planTotal(p), 0))}).`);
+      if (k.planos_acima_do_prazo.length) atencao.push(`${plural(k.planos_acima_do_prazo.length, "plano está", "planos estão")} acima do prazo da etapa: ${k.planos_acima_do_prazo.slice(0, 4).join(", ")}.`);
+      const semT = empList().filter(x => x.situacao === "RECEBIDO" || x.situacao === "NA_DIPA"); if (semT.length) atencao.push(`${plural(semT.length, "empenho aguarda", "empenhos aguardam")} tombamento pela DIPA.`);
+      const par = its.filter(i => st[i.id].disp > 0 && st[i.id].age && daysSince(st[i.id].age) > 180); if (par.length) atencao.push(`${plural(par.length, "material tem", "materiais têm")} saldo parado há mais de 6 meses (${fmtN(par.reduce((a, i) => a + st[i.id].disp, 0))} bens).`);
+      if (nl.intent === "resumo" && par.length) sug = "priorizar a destinação dos itens parados há mais tempo, oferecendo-os às unidades com demanda registrada.";
+      act({tipo:"abrir_tela", tela:"monitoramento", rotulo:"Abrir o monitoramento"});
+      return fecha();
+    }
+    case "por_categoria": {
+      const G = {}; its.forEach(i => { const c = i.categoria || "Outros"; const x = G[c] = G[c] || {g:0, d:0, v:0}; x.g += st[i.id].saldo; x.d += Math.max(0, st[i.id].disp); x.v += st[i.id].saldo * (i.valorUnitario || 0); });
+      const R = Object.entries(G).sort((a, b) => b[1].g - a[1].g); const tot = R.reduce((a, r) => a + r[1].g, 0) || 1;
+      linhas.push(`A reserva está concentrada em **${esc(R[0] ? R[0][0] : "—")}** (${Math.round((R[0] ? R[0][1].g : 0) / tot * 100)}% dos bens).`);
+      linhas.push(lista(R, ([c, x]) => `- ${esc(c)}: ${fmtN(x.g)} sob guarda, ${fmtN(x.d)} disponíveis · ${BRL.format(x.v)}`, 10));
+      return fecha();
+    }
+    case "maiores": case "maiores_valor": {
+      const pv = nl.intent === "maiores_valor"; const L = its.filter(i => st[i.id].saldo > 0).map(i => ({i, g:st[i.id].saldo, d:Math.max(0, st[i.id].disp), v:st[i.id].saldo * (i.valorUnitario || 0)})).sort((a, b) => pv ? b.v - a.v : b.g - a.g);
+      if (!L.length) return "A reserva está sem saldo no momento.";
+      const tot = L.reduce((a, x) => a + (pv ? x.v : x.g), 0) || 1, top3 = L.slice(0, 3).reduce((a, x) => a + (pv ? x.v : x.g), 0);
+      linhas.push(`Os 3 primeiros concentram **${Math.round(top3 / tot * 100)}%** ${pv ? "do valor" : "dos bens"} da reserva:`);
+      linhas.push(lista(L, x => `- ${esc(x.i.descricao)}: **${pv ? BRL.format(x.v) : fmtN(x.g)}** ${pv ? `(${fmtN(x.g)} bens)` : "sob guarda"} · ${fmtN(x.d)} disponíveis`, 8));
+      act({tipo:"abrir_tela", tela:"reserva", rotulo:"Ver a reserva"});
+      return fecha();
+    }
+    case "parados": {
+      const L = its.filter(i => st[i.id].disp > 0 && st[i.id].age).map(i => ({i, dias:daysSince(st[i.id].age), d:st[i.id].disp, v:st[i.id].disp * (i.valorUnitario || 0)})).sort((a, b) => b.dias - a.dias);
+      if (!L.length) return "Não há saldo parado: tudo o que está disponível entrou recentemente.";
+      const m6 = L.filter(x => x.dias > 180);
+      linhas.push(`O saldo mais antigo é de **${esc(L[0].i.descricao)}**, parado há **${fmtN(L[0].dias)} dias**.`);
+      linhas.push(lista(L, x => `- ${esc(x.i.descricao)}: ${fmtN(x.d)} disponíveis há ${fmtN(x.dias)} dias${x.v ? " · " + BRL.format(x.v) : ""}`));
+      if (m6.length) atencao.push(`${fmtN(m6.reduce((a, x) => a + x.d, 0))} bens (${BRL.format(m6.reduce((a, x) => a + x.v, 0))}) estão parados há mais de 6 meses — risco de obsolescência e perda de garantia.`);
+      sug = "oferecer esses itens às unidades e montar planos de destinação começando pelos mais antigos.";
+      if (can.createPlan()) act({tipo:"criar_plano", rotulo:"Montar plano com o item mais antigo", rascunho:{unidade:"", finalidade:"", justificativa:"Destinação de saldo parado na reserva técnica", itens:[{material_id:L[0].i.id, quantidade:Math.min(L[0].d, 10)}]}});
+      return fecha();
+    }
+    case "valor": {
+      const L = matIds ? its.filter(i => matIds.has(i.id)) : its; let g = 0, d = 0, e = 0; L.forEach(i => { g += st[i.id].saldo * (i.valorUnitario || 0); d += Math.max(0, st[i.id].disp) * (i.valorUnitario || 0); e += st[i.id].ent * (i.valorUnitario || 0); });
+      linhas.push(`${matIds ? `Em ${esc(rotMat)}, a` : "A"} reserva tem **${BRL.format(g)}** sob guarda, dos quais **${BRL.format(d)}** estão disponíveis para destinar.`);
+      if (e) linhas.push(`- Já entregue às unidades: ${BRL.format(e)}`);
+      const sv = L.filter(i => i.semValor).length; if (sv) atencao.push(`${plural(sv, "material está", "materiais estão")} sem valor unitário e não entram na soma.`);
+      return fecha();
+    }
+    case "entregas": {
+      const P = entregas(); const reg = []; P.forEach(p => p.itens.forEach(li => { if (!matIds || matIds.has(li.itemId)) reg.push({p, li}); }));
+      const tot = reg.reduce((a, r) => a + r.li.qtd, 0), val = reg.reduce((a, r) => a + r.li.qtd * (r.li.vu || 0), 0);
+      const onde = [rotMat && `de ${esc(rotMat)}`, E.uni && `para ${esc(uNome(E.uni))}`, E.per && E.per.rot].filter(Boolean).join(" ");
+      if (!reg.length) return `Não houve entregas ${onde || "registradas"}.` + (E.uni ? `\n\nVeja os planos em andamento para ${esc(uNome(E.uni))}: pergunte “planos do ${esc(uSigla(E.uni) || E.uni.name)}”.` : "");
+      linhas.push(`Foram entregues **${fmtN(tot)} bens** ${onde} (${BRL.format(val)}), em ${plural(new Set(reg.map(r => r.p.id)).size, "entrega", "entregas")}.`);
+      if (!E.uni) { const G = {}; reg.forEach(r => G[r.p.unidade] = (G[r.p.unidade] || 0) + r.li.qtd); const R = Object.entries(G).sort((a, b) => b[1] - a[1]); linhas.push(lista(R, ([u, q]) => `- ${esc(u)}: ${fmtN(q)}`, 6)); }
+      else linhas.push(lista(reg.sort((a, b) => b.p.entrega.data - a.p.entrega.data), r => `- ${fmtD(r.p.entrega.data)} · ${fmtN(r.li.qtd)} × ${esc(r.li.descricao)} · ${esc(r.p.numero)}`, 8));
+      act({tipo:"abrir_tela", tela:"monitoramento", rotulo:"Abrir o monitoramento"});
+      return fecha();
+    }
+    case "top_unidades": {
+      const G = {}; entregas().forEach(p => { const x = G[p.unidade] = G[p.unidade] || {q:0, v:0, n:0}; x.q += planQtd(p); x.v += planTotal(p); x.n++; });
+      const R = Object.entries(G).sort((a, b) => b[1].q - a[1].q); if (!R.length) return `Não há entregas ${E.per ? E.per.rot : "registradas"}.`;
+      const tot = R.reduce((a, r) => a + r[1].q, 0);
+      linhas.push(`**${esc(R[0][0])}** foi a unidade que mais recebeu ${E.per ? E.per.rot : ""}: ${fmtN(R[0][1].q)} bens (${Math.round(R[0][1].q / tot * 100)}% do total).`);
+      linhas.push(lista(R, ([u, x]) => `- ${esc(u)}: ${fmtN(x.q)} bens · ${BRL.format(x.v)} · ${plural(x.n, "entrega")}`, 8));
+      return fecha();
+    }
+    case "unidade_info": {
+      if (!E.uni) return null;
+      const P = Object.values(S.plans).filter(p => naUni(p, E.uni) && !p.legado); const at = P.filter(p => STAGES.includes(p.status) && p.status !== "ENTREGUE"), ent = P.filter(p => p.status === "ENTREGUE");
+      linhas.push(`**${esc(E.uni.name)}**: ${plural(at.length, "plano em andamento", "planos em andamento")} e ${plural(ent.length, "entrega concluída", "entregas concluídas")} (${fmtN(ent.reduce((a, p) => a + planQtd(p), 0))} bens).`);
+      if (at.length) linhas.push(lista(at, p => `- ${esc(p.numero)} · ${esc(ST[p.status].l)} · ${fmtN(planQtd(p))} bens · ${BRL.format(planTotal(p))}${isLate(p) ? " · **acima do prazo**" : ""}`));
+      at.filter(isLate).forEach(p => atencao.push(`${esc(p.numero)} está há ${daysSince(stageEnteredAt(p))} dias em “${esc(ST[p.status].l)}” — próximo: ${esc(nextResp(p))}.`));
+      at.slice(0, 2).forEach(p => act({tipo:"abrir_plano", plano_id:p.id, rotulo:"Abrir " + p.numero}));
+      if (!P.length) { linhas.length = 0; linhas.push(`Ainda não há planos nem entregas para **${esc(E.uni.name)}**.`); if (can.createPlan()) sug = "montar um plano de destinação para a unidade a partir do saldo disponível."; }
+      return fecha();
+    }
+    case "planos": {
+      let P = Object.values(S.plans).filter(p => !p.legado);
+      if (E.sit) P = P.filter(p => p.status === E.sit); else P = P.filter(p => STAGES.includes(p.status) && p.status !== "ENTREGUE");
+      if (E.uni) P = P.filter(p => naUni(p, E.uni));
+      if (!P.length) return `Nenhum plano ${E.sit ? "em “" + ST[E.sit].l + "”" : "em andamento"}${E.uni ? " para " + esc(uNome(E.uni)) : ""}.`;
+      linhas.push(`**${plural(P.length, "plano", "planos")}** ${E.sit ? "em “" + esc(ST[E.sit].l) + "”" : "em andamento"}${E.uni ? " para " + esc(uNome(E.uni)) : ""} · ${BRL.format(P.reduce((a, p) => a + planTotal(p), 0))}`);
+      if (!E.sit) { const C = {}; P.forEach(p => C[p.status] = (C[p.status] || 0) + 1); linhas.push(Object.keys(C).map(s => `- ${ST[s].l}: ${C[s]}`).join("\n")); }
+      else linhas.push(lista(P.sort((a, b) => stageEnteredAt(a) - stageEnteredAt(b)), p => `- ${esc(p.numero)} · ${esc(p.unidade)} · ${fmtN(planQtd(p))} bens · há ${daysSince(stageEnteredAt(p))} dias`));
+      const late = P.filter(isLate); if (late.length) atencao.push(`${plural(late.length, "está", "estão")} acima do prazo: ${late.slice(0, 5).map(p => p.numero).join(", ")}.`);
+      act({tipo:"abrir_tela", tela:"planos", rotulo:"Abrir planos"});
+      return fecha();
+    }
+    case "assinaturas": {
+      const P = Object.values(S.plans).filter(p => p.status === "AUTORIZACAO").sort((a, b) => stageEnteredAt(a) - stageEnteredAt(b));
+      if (!P.length) return "Nenhum termo aguarda assinatura no momento.";
+      const meus = P.filter(p => can.sign(p));
+      linhas.push(`**${plural(P.length, "termo aguarda", "termos aguardam")}** autorização (${BRL.format(P.reduce((a, p) => a + planTotal(p), 0))})${meus.length ? `; **${meus.length}** ${meus.length === 1 ? "depende" : "dependem"} da sua assinatura` : ""}:`);
+      linhas.push(lista(P, p => `- ${esc(p.numero)} · ${esc(p.unidade)} · ${BRL.format(planTotal(p))} · com ${esc(nextResp(p))} há ${daysSince(stageEnteredAt(p))} dias`));
+      P.filter(isLate).forEach(p => atencao.push(`${esc(p.numero)} passou do prazo de autorização.`));
+      meus.slice(0, 2).forEach(p => act({tipo:"assinar", plano_id:p.id, rotulo:"Revisar e assinar " + p.numero}));
+      if (!meus.length) act({tipo:"abrir_tela", tela:"autorizacoes", rotulo:"Abrir autorizações"});
+      return fecha();
+    }
+    case "atrasos": {
+      const P = Object.values(S.plans).filter(isLate).sort((a, b) => daysSince(stageEnteredAt(b)) - daysSince(stageEnteredAt(a)));
+      if (!P.length) return "Nenhum plano está acima do prazo da etapa. O fluxo está em dia.";
+      const G = {}; P.forEach(p => G[ST[p.status].l] = (G[ST[p.status].l] || 0) + 1); const gar = Object.entries(G).sort((a, b) => b[1] - a[1])[0];
+      linhas.push(`**${plural(P.length, "plano está", "planos estão")}** acima do prazo. O gargalo principal é **${esc(gar[0])}** (${gar[1]}).`);
+      linhas.push(lista(P, p => `- ${esc(p.numero)} · ${esc(ST[p.status].l)} há ${daysSince(stageEnteredAt(p))} dias · próximo: ${esc(nextResp(p))}`));
+      sug = `cobrar o responsável pela etapa “${esc(gar[0])}”.`;
+      act({tipo:"abrir_plano", plano_id:P[0].id, rotulo:"Abrir o mais atrasado"});
+      return fecha();
+    }
+    case "operacao": {
+      const A = Object.values(S.plans).filter(p => p.status === "AUTORIZADO"), Sp = Object.values(S.plans).filter(p => p.status === "SEPARACAO"), Pr = Object.values(S.plans).filter(p => p.status === "PRONTO");
+      if (!A.length && !Sp.length && !Pr.length) return "Não há nada aguardando separação ou entrega.";
+      linhas.push(`Fila do Almoxarifado e do Patrimônio: **${A.length}** para separar, **${Sp.length}** em separação e **${Pr.length}** prontos para entregar.`);
+      [...A, ...Sp, ...Pr].slice(0, 8).forEach(p => linhas.push(`- ${esc(p.numero)} · ${esc(ST[p.status].l)} · ${esc(p.unidade)} · ${fmtN(planQtd(p))} bens`));
+      act({tipo:"abrir_tela", tela:"entregas", rotulo:"Abrir separação e entrega"});
+      return fecha();
+    }
+    case "pendencias": {
+      const k = tIndicadores(); const L = k.minhas_pendencias;
+      if (!L.length) return `Você não tem pendências no perfil ${esc(ROLES[R()].label)}.`;
+      linhas.push(`Você tem **${plural(L.length, "pendência", "pendências")}** no perfil ${esc(ROLES[R()].label)}:`); linhas.push(lista(L, x => `- ${esc(x.acao)}: ${esc(x.numero)}`));
+      L.slice(0, 2).forEach(x => act({tipo:"abrir_plano", plano_id:x.plano_id, rotulo:"Abrir " + x.numero}));
+      return fecha();
+    }
+    case "pode_atender": {
+      if (!matIds) return null; const L = its.filter(i => matIds.has(i.id)).sort((a, b) => st[b.id].disp - st[a.id].disp); const d = L.reduce((a, i) => a + Math.max(0, st[i.id].disp), 0), q = E.qtd || 0;
+      if (q && d >= q) { linhas.push(`**Sim.** Há ${fmtN(d)} ${esc(rotMat)} disponíveis; o pedido de ${fmtN(q)} deixa ${fmtN(d - q)} na reserva.`); if (L[0] && st[L[0].id].disp >= q) linhas.push(`- Atende com: ${esc(L[0].descricao)}`); }
+      else linhas.push(`**${q ? "Não totalmente" : "Disponível"}:** há ${fmtN(d)} ${esc(rotMat)} disponíveis${q ? `, faltam ${fmtN(q - d)} para o pedido de ${fmtN(q)}` : ""}.`);
+      if (q && d < q) sug = d ? `atender parcialmente com ${fmtN(d)} e registrar a demanda restante para a próxima aquisição.` : "registrar a demanda para a próxima aquisição.";
+      if (d > 0 && can.createPlan() && L[0]) act({tipo:"criar_plano", rotulo:"Montar o plano", rascunho:{unidade:E.uni ? E.uni.name : "", finalidade:"", justificativa:"", itens:[{material_id:L[0].id, quantidade:Math.min(q || 1, Math.max(0, st[L[0].id].disp))}]}});
+      return fecha();
+    }
+    case "empenhos": {
+      let L = empList(); if (E.per) L = L.filter(e => e.recebidoEm >= E.per.de && e.recebidoEm < E.per.ate);
+      if (!L.length) return "Nenhum empenho registrado" + (E.per ? " " + E.per.rot : "") + ".";
+      const tomb = L.filter(e => e.situacao === "RECEBIDO" || e.situacao === "NA_DIPA"), empl = L.filter(e => e.situacao === "TOMBADO" || e.situacao === "EMPLAQUETAMENTO_AGENDADO");
+      linhas.push(`**${plural(L.length, "empenho", "empenhos")}**${E.per ? " " + E.per.rot : ""}: ${tomb.length} aguardando tombamento, ${empl.length} aguardando emplaquetamento, ${L.filter(e => e.situacao === "EMPLAQUETADO").length} concluídos.`);
+      tomb.sort((a, b) => a.recebidoEm - b.recebidoEm).slice(0, 5).forEach(e => linhas.push(`- ${esc(e.numero)} · ${fmtN(empQtd(e) - empBens(e).length)} bens sem número · recebido há ${daysSince(e.recebidoEm)} dias`));
+      tomb.filter(e => daysSince(e.recebidoEm) > 15).forEach(e => atencao.push(`${esc(e.numero)} aguarda tombamento há ${daysSince(e.recebidoEm)} dias.`));
+      act({tipo:"abrir_tela", tela:"empenhos", rotulo:"Abrir empenhos"});
+      return fecha();
+    }
+    case "garantia": {
+      const L = its.filter(i => i.garantiaAte && st[i.id].disp > 0).map(i => ({i, dias:Math.ceil((i.garantiaAte - now()) / DAY)})).sort((a, b) => a.dias - b.dias);
+      if (!L.length) return "Nenhum material disponível tem data de garantia cadastrada.";
+      const venc = L.filter(x => x.dias < 0), prox = L.filter(x => x.dias >= 0 && x.dias <= (S.cfg.diasGarantia || 90));
+      linhas.push(`**${prox.length}** ${prox.length === 1 ? "material perde" : "materiais perdem"} a garantia nos próximos ${S.cfg.diasGarantia || 90} dias e **${venc.length}** já ${venc.length === 1 ? "está vencido" : "estão vencidos"}, ainda na reserva.`);
+      linhas.push(lista([...venc, ...prox], x => `- ${esc(x.i.descricao)}: ${fmtN(st[x.i.id].disp)} disponíveis · ${x.dias < 0 ? "venceu há " + -x.dias + " dias" : "vence em " + x.dias + " dias"}`));
+      if (prox.length) sug = "priorizar a destinação desses itens antes do fim da garantia.";
+      return fecha();
+    }
+    case "entradas": {
+      const ls = []; its.forEach(i => lotsOf(i).forEach(l => { if ((!E.per || (l.data >= E.per.de && l.data < E.per.ate)) && (!matIds || matIds.has(i.id))) ls.push({i, l}); }));
+      ls.sort((a, b) => (b.l.data || 0) - (a.l.data || 0));
+      if (!ls.length) return `Nenhuma entrada ${E.per ? E.per.rot : "registrada"}.`;
+      linhas.push(`**${fmtN(ls.reduce((a, x) => a + (+x.l.qtd || 0), 0))} bens** entraram na reserva ${E.per ? E.per.rot : "nas entradas mais recentes"} (${BRL.format(ls.reduce((a, x) => a + (+x.l.qtd || 0) * (+x.l.vu || 0), 0))}).`);
+      linhas.push(lista(ls, x => `- ${fmtD(x.l.data)} · ${fmtN(x.l.qtd)} × ${esc(x.i.descricao)}${x.l.empenho ? " · empenho " + esc(x.l.empenho) : ""}`, 8));
+      return fecha();
+    }
+    case "evolucao": {
+      const M = []; const d = new Date(); for (let k = 5; k >= 0; k--) { const a = new Date(d.getFullYear(), d.getMonth() - k, 1).getTime(), b = new Date(d.getFullYear(), d.getMonth() - k + 1, 1).getTime(); const P = Object.values(S.plans).filter(p => p.status === "ENTREGUE" && p.entrega && p.entrega.data >= a && p.entrega.data < b); M.push({m:new Date(a).toLocaleDateString("pt-BR", {month:"short", year:"2-digit"}), q:P.reduce((x, p) => x + planQtd(p), 0), v:P.reduce((x, p) => x + planTotal(p), 0)}); }
+      const ult = M[5].q, ant = M[4].q;
+      linhas.push(`Entregas dos últimos 6 meses — neste mês **${fmtN(ult)} bens**${ant ? ` (${ult >= ant ? "+" : ""}${Math.round((ult - ant) / ant * 100)}% em relação ao mês anterior)` : ""}:`);
+      linhas.push(M.map(x => `- ${x.m}: ${fmtN(x.q)} bens · ${BRL.format(x.v)}`).join("\n"));
+      act({tipo:"abrir_tela", tela:"monitoramento", rotulo:"Abrir o monitoramento"});
+      return fecha();
+    }
+    case "pessoas": {
+      const sg = Object.entries(S.cfg.signatarios || {}).map(([r, x]) => `- ${esc(x.cargo)}: ${esc(x.nome)}`).join("\n");
+      return `**Quem autoriza**\n${sg}\n- Limite de alçada do Pró-Reitor: ${BRL.format(S.cfg.limiteAlcada || 0)} (acima disso, assina também a Reitoria)`;
+    }
+    case "plano_detalhe": case "empenho_detalhe": case "tombamento": return null; // tratados pelas regras específicas
+  }
+  return null;
+}
+const NLU_PERGUNTA = {est_material:"Quantos {mat} temos disponíveis?", est_total:"Quantos bens temos no total?", resumo:"Resumo da reserva", maiores:"Quais itens têm maior estoque?", maiores_valor:"Quais itens têm maior valor?", parados:"O que está parado há mais tempo?", valor:"Qual o valor total da reserva?", entregas:"O que foi entregue{uni}{per}?", top_unidades:"Quais unidades mais receberam?", unidade_info:"Como está {uni}?", planos:"Quais planos estão em andamento?", assinaturas:"Quais termos aguardam assinatura?", atrasos:"Quais planos estão atrasados?", operacao:"O que está pronto para separar ou entregar?", pendencias:"Quais são as minhas pendências?", pode_atender:"Dá para atender {qtd} {mat}?", empenhos:"Empenhos aguardando tombamento", garantia:"Itens com garantia vencendo", entradas:"O que chegou neste mês?", evolucao:"Evolução das entregas por mês", pessoas:"Quem são os signatários?", por_categoria:"Reserva por categoria", est_categoria:"Quantos itens de {cat} temos?"};
+function nluPerguntaDe(intent, E) {
+  let t = NLU_PERGUNTA[intent] || ""; if (!t) return "";
+  t = t.replace("{mat}", E.mat ? E.mat.txt.toLowerCase() : "bens").replace("{cat}", E.cat ? E.cat.toLowerCase() : "cada categoria").replace("{qtd}", E.qtd || "10").replace("{uni}", E.uni ? (intent === "unidade_info" ? "" : " para ") + (uSigla(E.uni) || E.uni.name) : intent === "unidade_info" ? "a unidade" : "").replace("{per}", E.per ? " " + E.per.rot : "");
+  return t;
+}
+function nluEsclarecer(nl, msg) {
+  const ops = []; (nl.rank || []).forEach(r => { const t = nluPerguntaDe(r.intent, nl.ents); if (t && !ops.includes(t)) ops.push(t); });
+  ["Resumo da reserva", "Quantos bens temos no total?", "Quais termos aguardam assinatura?"].forEach(t => { if (ops.length < 4 && !ops.includes(t)) ops.push(t); });
+  msg.sug = ops.slice(0, 4);
+  return `Não tenho certeza do que você quis perguntar${nl.fixes && nl.fixes.length ? ` (entendi “${esc(nl.fixes.map(f => f[1].toLowerCase()).join(", "))}”)` : ""}. Você quis dizer:`;
+}
+
+// combina: entendimento por semelhança (com memória do assunto) + regras específicas + pedido de esclarecimento
 function localAnswer(q, msg) {
+  let nl; try { nl = nluEntender(q); } catch (e) { console.error(e); nl = {intent:null, score:0, ents:{}, rank:[]}; }
+  const curta = nl.n && nl.n.split(" ").length <= 6;
+  // pergunta de continuação: "e de cadeiras?", "e para o CCS?", "e no mês passado?"
+  if (AS.ctx && curta && /^(E|E DE|E DO|E DA|E PARA|E NO|E NA|E O|E A|E OS|E AS|E SE|E QUANTO|E EM)\b/.test(nl.n) && (nl.ents.mat || nl.ents.cat || nl.ents.uni || nl.ents.per || nl.ents.qtd || nl.ents.sit)) {
+    const ents = {...AS.ctx.ents}; ["mat","cat","uni","per","qtd","sit"].forEach(k => { if (nl.ents[k]) { ents[k] = nl.ents[k]; if (k === "mat") delete ents.cat; if (k === "cat") delete ents.mat; } });
+    const r = nluResponder({...nl, intent:AS.ctx.intent, ents}, msg); if (r) { AS.ctx = {intent:AS.ctx.intent, ents}; return r; }
+  }
+  const ok = r => { AS.ctx = {intent:nl.intent, ents:nl.ents}; return (nl.fixes && nl.fixes.length ? `(Entendi “${nl.fixes.map(f => f[1].toLowerCase()).join(", ")}”.)\n` : "") + r; };
+  if (nl.intent && nl.score >= 0.5) { const r = nluResponder(nl, msg); if (r) return ok(r); }
+  const r2 = localAnswerRegras(q, msg); if (r2) { AS.ctx = null; return r2; }
+  if (nl.intent && nl.score >= 0.3) { const r = nluResponder(nl, msg); if (r) return ok(r); }
+  return nluEsclarecer(nl, msg);
+}
+function localAnswerRegras(q, msg) {
   let n = normName(q).replace(/[?!.,;:]/g, " ").replace(/\s+/g, " ").trim();
   const act = a => { if (actionAllowed(a)) msg.actions.push(a); };
   const lista = (arr, f, max = 8) => arr.slice(0, max).map(f).join("\n") + (arr.length > max ? `\n- e mais ${arr.length - max}…` : "");
@@ -3437,7 +3837,7 @@ function localAnswer(q, msg) {
       if (parts.length) return parts.join("\n\n");
     }
   }
-  return `Não encontrei nada sobre ${n.split(" ").length <= 6 ? "“" + esc(q.trim()) + "”" : "isso"} nos dados do Destina. Experimente perguntar, por exemplo:\n- Quantos ar-condicionados temos?\n- Quais itens têm maior estoque?\n- Quais termos aguardam a minha assinatura?\n- O que está parado há mais tempo?\n- O que foi entregue para o CCS este ano?\n- Monte um plano com 20 cadeiras para a Biblioteca Central\n- Quais planos estão atrasados?\n- Resumo da reserva`;
+  return null;
 }
 
 // ---------- envio ----------
@@ -3609,7 +4009,7 @@ function drawChat() {
       ${AS.msgs.length ? `<button class="btn ghost sm" id="as-clear">Nova conversa</button>` : ""}${VOZ.fala ? `<button class="btn ghost icon-btn ${VOZ.ler ? "on" : ""}" id="as-ler" aria-pressed="${VOZ.ler}" aria-label="${VOZ.ler ? "Parar de ler as respostas em voz alta" : "Ler as respostas em voz alta"}" title="${VOZ.ler ? "Respostas em voz alta: ligado" : "Respostas em voz alta: desligado"}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4z"/>${VOZ.ler ? '<path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/>' : '<path d="M22 9l-6 6M16 9l6 6"/>'}</svg></button>` : ""}${AS.full && !AS.min ? `<button class="btn sm" id="as-completo" title="Ver painéis, menus e todas as telas">Sistema completo</button>` : `<button class="btn ghost icon-btn" id="as-min" aria-label="${AS.min ? "Restaurar o assistente" : "Minimizar o assistente"}" title="${AS.min ? "Restaurar" : "Minimizar"}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">${AS.min ? '<path d="M6 15l6-6 6 6"/>' : '<path d="M5 12h14"/>'}</svg></button>`}${AS.full ? "" : `<button class="btn ghost icon-btn" id="as-x" aria-label="Fechar">${ic("x")}</button>`}</div>
     <div class="as-body" id="as-body">
       ${AS.msgs.length ? "" : AS.full ? helloFull() : `<div class="as-hello"><p><b>Olá${S.me.name ? ", " + esc(String(S.me.name).replace(/^(Prof\.ª|Prof\.)\s*/, "").split(" ")[0]) : ""}.</b> Pergunte sobre saldos, planos, entregas e prazos, digitando ou pelo microfone. Quando fizer sentido, eu ofereço um botão para você ir direto ao ponto. Respondo com cálculo exato sobre os dados do sistema, e tudo fica registrado no log de auditoria.</p><div class="as-sug">${chatSuggestions().map(s => `<button class="as-chip" data-sug="${esc(s)}">${esc(s)}</button>`).join("")}</div></div>`}
-      ${AS.msgs.map((m, i) => m.role === "user" ? `<div class="as-m u">${esc(m.text)}</div>` : `<div class="as-m a">${m.text ? mdLite(m.text) : ""}${m.pending && !m.text ? `<p class="as-think"><span></span><span></span><span></span> ${esc(AS.status || "Pensando")}…</p>` : ""}${m.pending && m.text && AS.status ? `<p class="as-think">${esc(AS.status)}…</p>` : ""}${m.err ? `<p class="small" style="color:var(--crit-ink)">${esc(m.err)}</p>` : ""}${m.actions.length ? `<div class="as-acts">${m.actions.map((a, k) => `<button class="btn sm ${k === 0 ? "primary" : ""}" data-act-i="${i}_${k}">${esc(a.rotulo)}</button>`).join("")}</div>` : ""}${!m.pending && m.used.length ? `<div class="as-used">Consultou: ${esc([...new Set(m.used)].join(", ").toLowerCase())}</div>` : ""}</div>`).join("")}
+      ${AS.msgs.map((m, i) => m.role === "user" ? `<div class="as-m u">${esc(m.text)}</div>` : `<div class="as-m a">${m.text ? mdLite(m.text) : ""}${m.pending && !m.text ? `<p class="as-think"><span></span><span></span><span></span> ${esc(AS.status || "Pensando")}…</p>` : ""}${m.pending && m.text && AS.status ? `<p class="as-think">${esc(AS.status)}…</p>` : ""}${m.err ? `<p class="small" style="color:var(--crit-ink)">${esc(m.err)}</p>` : ""}${m.actions.length ? `<div class="as-acts">${m.actions.map((a, k) => `<button class="btn sm ${k === 0 ? "primary" : ""}" data-act-i="${i}_${k}">${esc(a.rotulo)}</button>`).join("")}</div>` : ""}${m.sug && m.sug.length ? `<div class="as-sug" style="margin-top:8px">${m.sug.map(x => `<button class="as-chip" data-sug="${esc(x)}">${esc(x)}</button>`).join("")}</div>` : ""}${!m.pending && m.used.length ? `<div class="as-used">Consultou: ${esc([...new Set(m.used)].join(", ").toLowerCase())}</div>` : ""}</div>`).join("")}
     </div>
     <form class="as-f" id="as-f"><textarea id="as-in" rows="1" placeholder="${VOZ.on ? "Ouvindo… fale a sua pergunta" : "Pergunte ou toque no microfone…"}" aria-label="Mensagem para o assistente">${esc(keepVal)}</textarea>${VOZ.ok ? `<button type="button" class="btn mic ${VOZ.on ? "rec" : ""}" id="as-mic" aria-pressed="${VOZ.on}" aria-label="${VOZ.on ? "Parar de ouvir" : "Falar a pergunta"}" title="${VOZ.on ? "Parar de ouvir" : "Falar a pergunta"}" ${AS.busy ? "disabled" : ""}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/></svg></button>` : ""}${AS.busy ? `<button type="button" class="btn" id="as-stop">Parar</button>` : `<button class="btn primary" aria-label="Enviar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg></button>`}</form>
     ${VOZ.on ? `<p class="as-voz" role="status">● Ouvindo. Fale a pergunta; eu envio quando você parar.</p>` : ""}
