@@ -2655,6 +2655,7 @@ function chatDeterminarMontar(s, msg) {
   if (!s.qtd) { AS.slot = s; return `Quantos **${esc(it.descricao)}** deseja destinar? Há **${fmtN(disp)}** disponíveis.`; }
   if (!s.uni) { AS.slot = s; return `Para qual unidade vão os **${fmtN(s.qtd)} × ${esc(it.descricao)}**? (ex.: “para o CCS” ou “Biblioteca Central”)`; }
   AS.slot = null;
+  if (s.qtd > disp) { if (disp > 0) AS.slot = {...s, qtd:null, sugQtd:disp}; }
   if (s.qtd > disp) return `**Não há saldo suficiente:** há ${fmtN(disp)} disponíveis de ${esc(it.descricao)}, e o pedido é de ${fmtN(s.qtd)}. Quer destinar ${fmtN(disp)}?`;
   const dados = {unidade:s.uni.name, unidadeCode:s.uni.code || "", itens:[{material_id:it.id, quantidade:s.qtd}], observacao:"", origem:"chat"};
   if (canDeterminar()) {
@@ -3825,6 +3826,8 @@ function conversaNormal(n, msg) {
 // combina: entendimento por semelhança (com memória do assunto) + regras específicas + pedido de esclarecimento
 function localAnswer(q, msg) {
   const n0 = normName(q).replace(/[?!.,;:()"“”]/g, " ").replace(/\s+/g, " ").trim();
+  if (AS.slot && /^(SIM|PODE|PODE SER|OK|CERTO|QUERO|CONFIRMO|ISSO|CLARO|VAMOS)\b/.test(n0) && AS.slot.sugQtd) { const s = AS.slot; s.qtd = s.sugQtd; delete s.sugQtd; return chatDeterminarMontar(s, msg); }
+  if (AS.slot && /^(NAO|CANCELA|CANCELAR|DEIXA|ESQUECE)\b/.test(n0)) { AS.slot = null; return "Tudo bem, não registrei nada."; }
   const cv = conversaNormal(n0, msg); if (cv) return cv;
   const dc = chatDecisao(q, msg); if (dc) return dc;
   let nl; try { nl = nluEntender(q); } catch (e) { console.error(e); nl = {intent:null, score:0, ents:{}, rank:[]}; }
