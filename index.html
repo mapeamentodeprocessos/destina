@@ -3343,7 +3343,7 @@ function nluEntender(q) {
 function nluResponder(nl, msg) {
   const E = nl.ents, act = a => { if (actionAllowed(a)) msg.actions.push(a); };
   const st = computeStock(); const its = Object.values(S.items);
-  const lista = (arr, f, max = 6) => arr.slice(0, max).map(f).join("\n") + (arr.length > max ? `\n- e mais ${arr.length - max}…` : "");
+  const lista = (arr, f, max = 5) => arr.slice(0, max).map(f).join("\n") + (arr.length > max ? `\n- e mais ${arr.length - max}…` : "");
   const atencao = [], linhas = []; let sug = "";
   const fecha = () => [linhas.join("\n"), atencao.length ? "\n**Atenção:**\n" + atencao.map(a => "- " + a).join("\n") : "", sug ? "\n**Sugestão:** " + sug : ""].filter(Boolean).join("\n");
   const naUni = (p, u) => matchText(planUnitText(p), u.name) || (uSigla(u) && normName(planUnitText(p)).includes(normName(uSigla(u))));
@@ -3356,7 +3356,8 @@ function nluResponder(nl, msg) {
       if (!matIds) return nluResponder({...nl, intent:"est_total"}, msg);
       const L = its.filter(i => matIds.has(i.id)).sort((a, b) => st[b.id].disp - st[a.id].disp);
       const T = L.reduce((a, i) => ({d:a.d + Math.max(0, st[i.id].disp), g:a.g + st[i.id].saldo, c:a.c + st[i.id].comp + st[i.id].res, e:a.e + st[i.id].ent, v:a.v + Math.max(0, st[i.id].disp) * (i.valorUnitario || 0)}), {d:0, g:0, c:0, e:0, v:0});
-      linhas.push(`Em ${esc(rotMat)}: **${fmtN(T.d)} disponíveis** para destinar, de ${fmtN(T.g)} sob guarda${T.c ? ` (${fmtN(T.c)} já comprometidos em planos)` : ""}${T.v ? ` · ${BRL.format(T.v)}` : ""}.`);
+      const simNao = /^(TEM|TEMOS|AINDA TEM|EXISTE|EXISTEM|HA|POSSUI|POSSUIMOS|TERIA|TERIAMOS|SOBROU|SOBRA)\b/.test(nl.n) ? (T.d > 0 ? "**Sim.** " : "**Não** há disponíveis agora. ") : "";
+      linhas.push(`${simNao}Em ${esc(rotMat)}: **${fmtN(T.d)} disponíveis** para destinar, de ${fmtN(T.g)} sob guarda${T.c ? ` (${fmtN(T.c)} já comprometidos em planos)` : ""}${T.v ? ` · ${BRL.format(T.v)}` : ""}.`);
       linhas.push(lista(L, i => `- ${esc(i.descricao)}: **${fmtN(Math.max(0, st[i.id].disp))}** disponíveis${i.localizacao ? " · " + esc(i.localizacao) : ""}`));
       const par = L.filter(i => st[i.id].disp > 0 && st[i.id].age && daysSince(st[i.id].age) > 180); if (par.length) atencao.push(`${plural(par.length, "material está", "materiais estão")} com saldo parado há mais de 6 meses.`);
       const tomb = Object.values(S.bens || {}).filter(b => b.situacao === "EM_RESERVA" && matIds.has(b.materialId)).length; if (tomb) linhas.push(`- ${fmtN(tomb)} deles já estão tombados.`);
@@ -3557,8 +3558,64 @@ function nluEsclarecer(nl, msg) {
   return `Não tenho certeza do que você quis perguntar${nl.fixes && nl.fixes.length ? ` (entendi “${esc(nl.fixes.map(f => f[1].toLowerCase()).join(", "))}”)` : ""}. Você quis dizer:`;
 }
 
+// ======== CONVERSA NORMAL (cumprimentos, cortesia, perguntas sobre o assistente, data e hora) ========
+const CONV_ESCOLHE = a => a[Math.floor(Math.random() * a.length)];
+function conversaNormal(n, msg) {
+  const nome = S.me.name ? String(S.me.name).replace(/^(Prof\.ª|Prof\.)\s*/, "").split(" ")[0] : "";
+  const vc = nome ? ", " + esc(nome) : "";
+  const hora = new Date().getHours(), sd = saudacao();
+  const pend = () => { try { const k = (tIndicadores().minhas_pendencias || []).length; return k ? ` Você tem **${plural(k, "pendência", "pendências")}** no seu perfil.` : ""; } catch (e) { return ""; } };
+  const R = [
+    // cumprimentos
+    [/^(OI+|OLA|OPA|E AI|EAI|HELLO|HEY|SALVE|BOM DIA|BOA TARDE|BOA NOITE|SAUDACOES)\b/, () => {
+      const pediu = /BOM DIA/.test(n) ? "dia" : /BOA TARDE/.test(n) ? "tarde" : /BOA NOITE/.test(n) ? "noite" : "";
+      const real = hora < 12 ? "dia" : hora < 18 ? "tarde" : "noite";
+      const nota = pediu && pediu !== real ? ` (por aqui já é ${real === "dia" ? "manhã" : real})` : "";
+      return `${sd}${vc}!${nota} Em que posso ajudar?${pend()}`; }],
+    // como vai
+    [/^(TUDO BEM|TUDO BOM|TUDO CERTO|COMO VAI|COMO VOCE ESTA|COMO ESTA VOCE|COMO VC ESTA|BELEZA|TRANQUILO|COMO ANDA)\b/, () => CONV_ESCOLHE([`Tudo certo por aqui${vc}! E com você? Em que posso ajudar?`, `Tudo bem, obrigado por perguntar${vc}. O que você precisa saber da reserva?`, `Tudo ótimo${vc}. Pronto para ajudar.`])],
+    [/^(E VOCE|E VC|E CONTIGO)\b/, () => "Estou bem, obrigado! Sigo à disposição para o que precisar."],
+    [/^(ESTOU|TO|TOU) (BEM|OTIMO|OTIMA|TRANQUILO|TRANQUILA|FELIZ)\b/, () => `Que bom${vc}! Em que posso ajudar?`],
+    [/^(ESTOU|TO|TOU) (CANSAD\w*|ESTRESSAD\w*|CHEI\w* DE COISA|SOBRECARREGAD\w*|COM PRESSA)\b/, () => "Entendo. Vou ser direto: diga o que precisa e eu trago a resposta curta, ou pergunte “minhas pendências” para ver o que é prioridade."],
+    // agradecimentos e elogios
+    [/^(MUITO )?(OBRIGAD\w*|VALEU|BRIGAD\w*|AGRADEC\w*|GRAT[OA]|THANKS)\b/, () => CONV_ESCOLHE(["Por nada! Se precisar de mais alguma coisa, é só perguntar.", "Disponha!", "Às ordens. Qualquer coisa, estou aqui."])],
+    [/^(PERFEITO|OTIMO|OTIMA|EXCELENTE|SHOW|MUITO BOM|MUITO BEM|BOA|TOP|LEGAL|MASSA|SENSACIONAL|PARABENS|BOM TRABALHO|ADOREI|GOSTEI)\b/, () => CONV_ESCOLHE(["Que bom que ajudou!", "Fico feliz em ajudar. Precisa de mais alguma coisa?", "Obrigado! Posso ajudar em algo mais?"])],
+    [/^(OK|OKAY|CERTO|ENTENDI|ENTENDIDO|BLZ|BELEZA|COMBINADO|FECHADO|TA BOM|TA CERTO|SIM|CLARO|PODE SER|ISSO)\b/, () => "Combinado. Se quiser, pergunte outra coisa."],
+    [/^(NAO|NADA|NAO OBRIGAD\w*|SO ISSO|E SO|ERA SO ISSO|POR ENQUANTO NAO)\b/, () => "Tudo bem. Quando precisar, é só chamar."],
+    // despedidas
+    [/^(TCHAU|ATE LOGO|ATE MAIS|ATE AMANHA|ATE BREVE|FALOU|FUI|BOA NOITE E ATE|BOM DESCANSO|BYE|ADEUS|ATE A PROXIMA)\b/, () => CONV_ESCOLHE([`Até logo${vc}!`, `Até mais${vc}! Bom trabalho.`, hora >= 18 ? `Boa noite${vc}, até amanhã!` : `Até mais${vc}!`])],
+    // sobre o assistente
+    [/^(QUEM (E|EH|ES) VOCE|O QUE (E|EH) VOCE|QUAL (E )?O SEU NOME|QUAL SEU NOME|COMO (VOCE SE CHAMA|TE CHAMO)|SE APRESENTE)\b/, () => "Sou o **Assistente do Destina**, o sistema de gestão da reserva técnica da UFPB. Respondo com os dados do sistema: saldos, planos, entregas, empenhos, tombamentos e prazos."],
+    [/^(VOCE (E|EH) (UM )?(ROBO|HUMANO|PESSOA|IA|INTELIGENCIA ARTIFICIAL|CHATGPT|BOT))\b/, () => "Sou um assistente automático do Destina. Não sou uma pessoa: entendo a pergunta e calculo a resposta com os dados do sistema, na hora."],
+    [/^(QUEM (TE )?(CRIOU|FEZ|DESENVOLVEU)|QUEM FEZ (O|ESSE) SISTEMA|QUEM DESENVOLVEU (O|ESSE) SISTEMA)\b/, () => "O Destina foi desenvolvido para a Divisão de Patrimônio (DIPA/PRA) da UFPB, para controlar a reserva técnica de bens permanentes."],
+    [/^(O QUE (VOCE|VC) (FAZ|SABE|PODE FAZER|CONSEGUE)|PARA QUE (VOCE )?SERVE|COMO (VOCE )?FUNCIONA|COMO (TE )?USAR|AJUDA|ME AJUDA|ME AJUDE|PODE ME AJUDAR|PODERIA ME AJUDAR|PRECISO DE AJUDA|PRECISO DE UMA INFORMACAO|PRECISO DE INFORMACOES|TENHO UMA DUVIDA|MENU|COMANDOS)\b/, () =>
+      "Respondo perguntas sobre a reserva técnica, com os dados atuais. Por exemplo:\n- **Saldos:** “quantos ar-condicionados temos?”, “tem projetor?”\n- **Totais e valor:** “quantos bens temos?”, “valor total da reserva”\n- **Planos e assinaturas:** “o que aguarda minha assinatura?”, “planos atrasados”\n- **Entregas:** “o que o CCS recebeu este ano?”\n- **Empenhos:** “empenhos aguardando tombamento”, “tombamento 300120”\n- **Decisão:** “resumo para a reitora”, “o que destinar primeiro?”"],
+    // data e hora
+    [/^(QUE|QUAL)( E)?( O)? (DIA|DATA)( E)? (HOJE|DE HOJE)|^HOJE E QUE DIA|^QUE DIA E HOJE/, () => "Hoje é " + new Date().toLocaleDateString("pt-BR", {weekday:"long", day:"numeric", month:"long", year:"numeric"}) + "."],
+    [/^(QUE HORAS SAO|QUE HORA E|QUAL A HORA|HORAS)\b/, () => "Agora são " + new Date().toLocaleTimeString("pt-BR", {hour:"2-digit", minute:"2-digit"}) + "."],
+    // cortesias e desculpas
+    [/^(DESCULP\w*|FOI MAL|PERDAO|ME DESCULP\w*)\b/, () => "Sem problema! Pode perguntar de novo, do seu jeito."],
+    [/^(VOCE (ERROU|ESTA ERRADO|NAO ENTENDEU)|ERRADO|NAO ERA ISSO|NAO FOI ISSO QUE (EU )?PERGUNTEI|RESPOSTA ERRADA)\b/, () => "Desculpe. Pode reformular? Ajuda dizer o material, a unidade ou o período (ex.: “cadeiras entregues ao CCS em outubro”)."],
+    [/^(TESTE|TESTANDO|ALO|ALGUEM AI|TEM ALGUEM AI|VOCE ESTA AI)\b/, () => `Estou aqui${vc}! Pode perguntar.`],
+    [/^(HAHA|KKK|RSRS|HEHE|KKKK|HAHAHA)/, () => "😄 Posso ajudar em algo da reserva?"],
+    // fora do assunto
+    [/\b(PREVISAO DO TEMPO|VAI CHOVER|CLIMA HOJE|FUTEBOL|JOGO DE HOJE|RECEITA DE|PIADA|CONTA UMA PIADA|CAPITAL DA|QUEM GANHOU|NOTICIAS?)\b/, () => "Isso foge do que eu sei: só tenho os dados do Destina (reserva técnica, planos, entregas e empenhos). Posso ajudar com algum desses?"],
+  ];
+  const PREFIXO = new Set([0, 1, 5, 6, 7, 8]); // cumprimentos e cortesias que podem vir antes de uma pergunta
+  for (const [k, [re, f]] of R.entries()) if (re.test(n)) {
+    if (!PREFIXO.has(k)) return f();
+    // cumprimento seguido de pergunta de verdade: deixa a pergunta seguir
+    const resto = n.replace(/^(?:(?:OI+|OLA|OPA|E AI|EAI|HELLO|HEY|SALVE|BOM DIA|BOA TARDE|BOA NOITE|SAUDACOES|TUDO BEM COM VOCE|TUDO BOM COM VOCE|TUDO BEM|TUDO BOM|TUDO CERTO|COMO VAI VOCE|COMO VAI|COMO VOCE ESTA|E VOCE|COM VOCE|DESTINA|ASSISTENTE|PESSOAL|AMIGO|OBRIGAD\w*|VALEU|OK|CERTO|BELEZA|PERFEITO|OTIMO|SIM|NAO|NADA|ENTENDI|LEGAL|SHOW)\b\s*)+/, "").trim();
+    if (resto && resto.split(" ").length >= 2 && !/^(E VOCE|COM VOCE|PRA VOCE|PARA VOCE|TAMBEM|IGUALMENTE)$/.test(resto)) return null;
+    return f();
+  }
+  return null;
+}
+
 // combina: entendimento por semelhança (com memória do assunto) + regras específicas + pedido de esclarecimento
 function localAnswer(q, msg) {
+  const n0 = normName(q).replace(/[?!.,;:()"“”]/g, " ").replace(/\s+/g, " ").trim();
+  const cv = conversaNormal(n0, msg); if (cv) return cv;
   let nl; try { nl = nluEntender(q); } catch (e) { console.error(e); nl = {intent:null, score:0, ents:{}, rank:[]}; }
   const curta = nl.n && nl.n.split(" ").length <= 6;
   // pergunta de continuação: "e de cadeiras?", "e para o CCS?", "e no mês passado?"
@@ -3571,6 +3628,17 @@ function localAnswer(q, msg) {
   if (!pedidoDeAcao && nl.intent && nl.score >= 0.5) { const r = nluResponder(nl, msg); if (r) return ok(r); }
   const r2 = localAnswerRegras(q, msg); if (r2) { AS.ctx = null; return r2; }
   if (nl.intent && nl.score >= 0.3) { const r = nluResponder(nl, msg); if (r) return ok(r); }
+  // pergunta de saldo sobre algo que não existe no catálogo: resposta objetiva
+  if (/^(TEM|TEMOS|AINDA TEM|EXISTE|EXISTEM|HA|POSSUI|POSSUIMOS|TERIA|QUANT\w*|SALDO|ESTOQUE)\b/.test(nl.n || "") && !nl.ents.mat && !nl.ents.cat && !nl.ents.uni && !nl.ents.plano && !nl.ents.emp) {
+    const termo = (nl.n || "").split(" ").filter(w => w.length > 2 && !NLU_STOP.has(w) && !/^(TEM|TEMOS|AINDA|EXISTE|EXISTEM|POSSUI|POSSUIMOS|TERIA|QUANTOS|QUANTAS|QUANTO|QUANTA|SALDO|ESTOQUE|RESERVA|TECNICA|DISPONIVEL|DISPONIVEIS|HOJE|AGORA|SOBRANDO|ALGUM|ALGUMA|UNIDADES|BENS|ITENS)$/.test(w)).join(" ");
+    if (termo) {
+      const tri = s => { const o = new Set(); const t = " " + s + " "; for (let i = 0; i < t.length - 2; i++) o.add(t.slice(i, i + 3)); return o; };
+      const T = tri(termo); const st = computeStock();
+      const viz = Object.values(S.items).map(it => { const A = tri(normName(it.descricao).split(" ").slice(0, 3).join(" ")); let k = 0; T.forEach(g => { if (A.has(g)) k++; }); return {it, sc:k / Math.max(T.size, 1)}; }).filter(x => x.sc >= 0.3).sort((a, b) => b.sc - a.sc).slice(0, 3);
+      if (viz.length) msg.sug = viz.map(x => `Quantos ${x.it.descricao.split(" ").slice(0, 2).join(" ").toLowerCase()} temos?`);
+      return `**Não.** Não há “${esc(termo.toLowerCase())}” na reserva técnica hoje.${viz.length ? " Talvez você procure:" : ""}`;
+    }
+  }
   return nluEsclarecer(nl, msg);
 }
 function localAnswerRegras(q, msg) {
