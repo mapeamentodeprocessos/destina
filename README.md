@@ -51,7 +51,7 @@ supabase/03_unidades.sql   hierarquia SIPAC/UFPB (1.653 unidades, emitida em 19/
 | Perfil | Pode |
 |---|---|
 | Gestão do sistema | configurar, aprovar usuários, importar, cancelar planos em qualquer etapa |
-| Reitoria / PRA | assinar ou indeferir termos da sua alçada |
+| Autorizador (nível 1 e nível 2) | decidir a destinação (assinatura que inicia o plano) e assinar ou indeferir termos da sua alçada; o nível 2 assina acima do limite de alçada |
 | Formalização documental | instruir (processo SIPAC, fundamentação, despacho), devolver para ajustes |
 | Divisão de Patrimônio | registrar entradas, criar planos, registrar entregas e tombamentos |
 | Almoxarifado Central | registrar entradas, criar planos, separar e conferir |

@@ -632,8 +632,8 @@ const ic = (n, cls = "") => `<svg class="${cls}" viewBox="0 0 24 24" fill="none"
 // ---------- domínio ----------
 const ROLES = {
   ADMIN:{label:"Gestão do sistema", cor:"#0B3A75"},
-  REITORIA:{label:"Reitoria (autorizadora)", cor:"#6250d6", signer:true},
-  PRA:{label:"Pró-Reitoria de Administração (autorizadora)", cor:"#1F5FAF", signer:true},
+  PRA:{label:"Autorizador · nível 1", cor:"#1F5FAF", signer:true},
+  REITORIA:{label:"Autorizador · nível 2", cor:"#6250d6", signer:true},
   FORMALIZACAO:{label:"Formalização documental", cor:"#0E7C8C"},
   PATRIMONIO:{label:"Divisão de Patrimônio", cor:"#0E8C7E"},
   ALMOXARIFADO:{label:"Almoxarifado Central", cor:"#C46A1A"},
@@ -788,7 +788,7 @@ function docPayload(p) {
 const R = () => S.role;
 const has = (...rs) => rs.includes(R());
 const can = {
-  createPlan: () => has("PATRIMONIO","ALMOXARIFADO","ADMIN"), // via de regra o plano nasce da decisão da Reitoria/PRA; DIPA e Almoxarifado também podem iniciar
+  createPlan: () => has("PATRIMONIO","ALMOXARIFADO","ADMIN"), // via de regra o plano nasce da decisão assinada de um autorizador; DIPA, Almoxarifado e gestor propõem
   editItems: () => has("PATRIMONIO","ALMOXARIFADO","ADMIN"),
   formalize: () => has("FORMALIZACAO","ADMIN"),
   separate: () => has("ALMOXARIFADO","ADMIN"),
@@ -983,7 +983,7 @@ async function seedDemo() {
     if (target === "AUTORIZACAO_PRA_OK") { t += 0.8 * DAY; await demoSign(p, "PRA", t); }
     if (target === "INDEFERIDO") {
       t += 1.2 * DAY; p.indeferimento = {por:"u_pra", role:"PRA", at:t, motivo:"Destinação não prioritária frente às demandas de ensino; reavaliar no próximo ciclo."};
-      setStatus(p, "INDEFERIDO", t); await addEvent(p, "indeferimento", "Indeferido pela PRA: " + p.indeferimento.motivo, {at:t, by:"u_pra", role:"PRA"});
+      setStatus(p, "INDEFERIDO", t); await addEvent(p, "indeferimento", "Indeferido pelo autorizador: " + p.indeferimento.motivo, {at:t, by:"u_pra", role:"PRA"});
     }
     S.plans[id] = p;
   }
@@ -1332,7 +1332,7 @@ function render() {
 function vSemPerfil() {
   const ap = S.mePerfil && S.mePerfil.aprovado;
   return `<div class="welcome card" style="padding:28px"><h1>${ap ? "Seu acesso ainda não tem perfil" : "Cadastro recebido"}</h1>
-  <p class="ink2" style="margin-top:8px">${ap ? "O gestor do sistema aprovou sua conta, mas ainda não marcou um perfil (Reitoria, PRA, Formalização, Patrimônio, Almoxarifado ou Consulta)." : `Sua conta (${esc(S.me.email || "")}) foi criada e aguarda a aprovação do gestor do sistema. Assim que ele aprovar e definir o seu perfil, esta tela se atualiza sozinha.`}</p>
+  <p class="ink2" style="margin-top:8px">${ap ? "O gestor do sistema aprovou sua conta, mas ainda não marcou um perfil (Autorizador, Formalização, Patrimônio, Almoxarifado ou Consulta)." : `Sua conta (${esc(S.me.email || "")}) foi criada e aguarda a aprovação do gestor do sistema. Assim que ele aprovar e definir o seu perfil, esta tela se atualiza sozinha.`}</p>
   ${S.existeAdmin === false ? `<div class="alert warning" style="margin-top:16px"><div class="ic">${ic("shield")}</div><div><b>Este sistema ainda não tem administrador</b><p>Se você é o responsável pela implantação, assuma a gestão agora. A opção some assim que existir um administrador.</p><button class="btn primary sm" style="margin-top:8px" data-act="claim-admin">Assumir como administrador</button></div></div>` : ""}
   <div class="row" style="margin-top:18px"><button class="btn" data-act="logout">Sair</button><button class="btn ghost" data-act="to-demo">Explorar a demonstração</button></div></div>`;
 }
@@ -1960,12 +1960,12 @@ function vPlanos() {
   plans.sort((a, b) => b.criadoEm - a.criadoEm);
   const filt = [["ativos","Em andamento"],["concluidos","Entregues"],["historico","Histórico"],["encerrados","Indeferidos e cancelados"],["todos","Todos"]];
   const extra = STAGES.includes(u.planSt) ? `<button aria-pressed="true">${ST[u.planSt].l}</button>` : "";
-  return `<div class="page-h"><div><h1>Planos de destinação</h1><p>Via de regra, o plano nasce da decisão da Reitoria ou da Pró-Reitoria de Administração; a Divisão de Patrimônio e o Almoxarifado também podem iniciá-lo. Depois segue o trilho: formalização, autorização, separação e entrega com termo de responsabilidade.</p></div>
+  return `<div class="page-h"><div><h1>Planos de destinação</h1><p>O plano nasce da decisão assinada de um autorizador. A Divisão de Patrimônio, o Almoxarifado e o gestor podem propor a destinação. Depois segue o trilho: formalização, autorização, separação e entrega com termo de responsabilidade.</p></div>
     <div class="r"><div class="seg" role="group" aria-label="Visualização"><button aria-pressed="${u.planView === "lista"}" data-act="pview" data-k="lista">Lista</button><button aria-pressed="${u.planView === "quadro"}" data-act="pview" data-k="quadro">Quadro</button></div>${canDeterminar() || canPropor() ? `<button class="btn primary" data-act="new-plan">${ic("plus")}${canDeterminar() ? "Decidir destinação" : "Propor destinação"}</button>` : ""}</div></div>
   ${detHtml}
   <div class="toolbar"><input class="inp q" type="search" placeholder="Buscar por número, unidade, processo ou finalidade…" value="${esc(u.planQ)}" data-ui="planQ" aria-label="Buscar planos">
     <div class="seg" role="group" aria-label="Situação">${extra}${filt.map(([k, l]) => `<button aria-pressed="${u.planSt === k}" data-act="pst" data-k="${k}">${l}</button>`).join("")}</div></div>
-  ${u.planView === "quadro" ? planKanban(plans) : `<div class="card"><div class="list">${plans.map(planRow).join("") || `<div class="empty"><b>Nenhum plano aqui</b>${canDeterminar() || canPropor() ? 'O plano começa com a decisão assinada da Reitoria ou da PRA.<br><button class="btn primary" data-act="new-plan">' + (canDeterminar() ? "Decidir destinação" : "Propor destinação") + '</button>' : "Quando houver planos nesta situação, eles aparecem aqui."}</div>`}</div></div>`}`;
+  ${u.planView === "quadro" ? planKanban(plans) : `<div class="card"><div class="list">${plans.map(planRow).join("") || `<div class="empty"><b>Nenhum plano aqui</b>${canDeterminar() || canPropor() ? 'O plano começa com a decisão assinada de um autorizador.<br><button class="btn primary" data-act="new-plan">' + (canDeterminar() ? "Decidir destinação" : "Propor destinação") + '</button>' : "Quando houver planos nesta situação, eles aparecem aqui."}</div>`}</div></div>`}`;
 }
 function planRow(p) {
   const late = isLate(p);
@@ -2012,7 +2012,7 @@ function formPlano(id, preItem, draft) {
     const tot = sel.reduce((a, x) => a + x.qtd * x.vu, 0);
     $("#sel").innerHTML = sel.length ? `<div class="pick-row small muted" style="font-weight:700;border-bottom:1px solid var(--line)"><span>Bem selecionado</span><span class="r-al">Quantidade</span><span class="r-al hide-sm">Subtotal</span><span></span></div>` + sel.map((x, i) => { const d = dispOf(x.itemId); const over = x.qtd > d; return `<div class="pick-row"><div style="min-width:0"><b style="font-size:13.5px">${esc(x.descricao)}</b><div class="small ${over ? "" : "muted"}" style="${over ? "color:var(--crit-ink);font-weight:600" : ""}">${over ? "Acima do disponível: " : "Disponível: "}${fmtN(d)} · ${BRL.format(x.vu)} cada</div></div><div class="qty-ctrl" style="justify-content:flex-end"><input class="inp num" type="number" min="1" max="${d}" value="${x.qtd}" data-q="${i}" aria-label="Quantidade"></div><div class="r-al num hide-sm" style="font-weight:600">${BRL.format(x.qtd * x.vu)}</div><button class="btn ghost icon-btn" data-rm="${i}" aria-label="Remover">${ic("x")}</button></div>`; }).join("") + `<div class="row" style="justify-content:flex-end;padding-top:10px"><span class="ink2">Total do plano</span><b class="num" style="font-size:18px">${BRL.format(tot)}</b></div>` : '<p class="muted small">Nenhum bem selecionado ainda. Busque acima e toque para adicionar.</p>';
     const req = requiredSigners(tot);
-    $("#alc").innerHTML = sel.length ? `<div class="alert ${req.length > 1 ? "warning" : "good"}"><div class="ic">${ic("shield")}</div><div><b>Alçada de autorização: ${req.map(r => esc(S.cfg.signatarios[r].cargo)).join(" e ")}</b><p>${S.cfg.exigirAmbos ? "A configuração exige as duas assinaturas em todos os planos." : `Planos até ${BRL.format(S.cfg.limiteAlcada)} são autorizados pela PRA; acima disso, também pela Reitoria${S.cfg.sequencial ? ", nesta ordem" : ""}.`}</p></div></div>` : "";
+    $("#alc").innerHTML = sel.length ? `<div class="alert ${req.length > 1 ? "warning" : "good"}"><div class="ic">${ic("shield")}</div><div><b>Alçada de autorização: ${req.map(r => esc(S.cfg.signatarios[r].cargo)).join(" e ")}</b><p>${S.cfg.exigirAmbos ? "A configuração exige as duas assinaturas em todos os planos." : `Planos até ${BRL.format(S.cfg.limiteAlcada)} são autorizados pelo autorizador de nível 1 (${esc(autz("PRA"))}); acima disso, também pelo de nível 2 (${esc(autz("REITORIA"))})${S.cfg.sequencial ? ", nesta ordem" : ""}.`}</p></div></div>` : "";
   };
   m.addEventListener("click", e => {
     const pk = e.target.closest("[data-pick]"); if (pk) { const it = S.items[pk.dataset.pick]; sel.push({itemId:it.id, codigo:it.codigo, descricao:it.descricao, qtd:1, vu:it.valorUnitario}); drawPick(); drawSel(); setTimeout(() => { const inp = $$("[data-q]", m).pop(); inp && inp.select(); }, 0); }
@@ -2708,8 +2708,9 @@ function seedEmpenhosDemo() {
   mk("2026NE000431", "7781", "Clima Forte Engenharia", "34.567.890/0001-12", 25, "EMPLAQUETAMENTO_AGENDADO", [[d, 12]], "310400");
 }
 
-// ---------- DETERMINAÇÕES DE DESTINAÇÃO (Reitoria e Pró-Reitoria, pela tela ou pelo chat) ----------
-const canDeterminar = () => has("PRA", "REITORIA"); // decisão: só a Reitoria e a PRA, com assinatura
+// ---------- DECISÕES DE DESTINAÇÃO (autorizadores, pela tela ou pelo chat) ----------
+const canDeterminar = () => has("PRA", "REITORIA"); // decisão: só os autorizadores (níveis 1 e 2), com assinatura
+const autz = r => (S.cfg.signatarios[r] || {}).cargo || (r === "PRA" ? "autorizador de nível 1" : "autorizador de nível 2");
 const canPropor = () => has("PATRIMONIO", "ALMOXARIFADO", "ADMIN"); // DIPA, Almoxarifado e gestor propõem; a decisão é da autoridade
 const detPropostas = () => detList().filter(d => d.situacao === "PROPOSTA");
 const detList = () => Object.values(S.determ || {}).sort((a, b) => b.criadoEm - a.criadoEm);
@@ -2793,7 +2794,7 @@ function assinarDecisao(dados, opts = {}) {
 }
 async function proporDestinacao(dados) {
   const r = await detDo("propor", {p_dados:dados}, null);
-  if (r) toast(`Proposta ${r.determinacao} enviada para a decisão da Reitoria e da PRA${r.notificados ? ` (${plural(r.notificados, "aviso", "avisos")} por e-mail)` : ""}.`);
+  if (r) toast(`Proposta ${r.determinacao} enviada para a decisão dos autorizadores${r.notificados ? ` (${plural(r.notificados, "aviso", "avisos")} por e-mail)` : ""}.`);
   return r;
 }
 function detCard() {
@@ -2809,9 +2810,9 @@ function detCard() {
       : `<div class="card-b"><p class="small muted">Nenhuma proposta aguardando. Para decidir, diga ao assistente, por exemplo: “destinar 30 cadeiras para o CCS”. Ele mostra a disponibilidade e pede a sua assinatura.</p></div>`) : "";
   const blocoProp = prop ? (minhas.length ? `<div class="list">${minhas.map(d => `<div class="li" style="grid-template-columns:minmax(0,1fr) auto"><div class="it-t"><b>${esc(d.numero)} · ${esc(d.unidade)}</b><small>${itensTxt(d)}${d.situacao === "RECUSADA" ? `<br>Não aprovada: ${esc(d.motivoRecusa || "")}` : ""}</small></div>
       <div class="row" style="gap:6px">${d.situacao === "PROPOSTA" ? `<span class="pill">Aguardando decisão</span><button class="btn sm ghost" data-act="det-retirar" data-id="${d.id}">Retirar</button>` : `<span class="pill" style="color:var(--crit-ink);background:var(--crit-soft)">Não aprovada</span>`}</div></div>`).join("")}</div>`
-      : `<div class="card-b"><p class="small muted">Para propor, diga ao assistente, por exemplo: “quero mandar um projetor para o CCEN”. Ele mostra a disponibilidade e envia a proposta para a decisão da Reitoria e da PRA. O plano só começa depois da assinatura.</p></div>`) : "";
+      : `<div class="card-b"><p class="small muted">Para propor, diga ao assistente, por exemplo: “quero mandar um projetor para o CCEN”. Ele mostra a disponibilidade e envia a proposta para a decisão dos autorizadores. O plano só começa depois da assinatura.</p></div>`) : "";
   const blocoRec = rec.length ? `<div class="list">${rec.map(d => { const p = S.plans[d.planoId]; return `<a class="li" style="grid-template-columns:minmax(0,1fr) auto;text-decoration:none;color:inherit" href="#plano-${p.id}"><div class="it-t"><b>${esc(p.numero)} · ${esc(d.unidade)}</b><small>${itensTxt(d)}<br>Decisão assinada: ${esc(detCargo(d))}, ${fmtD((d.assinatura || {}).assinadoEm || d.criadoEm)} (${esc(d.numero)})</small></div><span class="pill"><i></i>${esc(ST[p.status].l)}</span></a>`; }).join("")}</div>` : "";
-  return `<section class="card" style="margin-bottom:16px"><div class="card-h"><h3>${dec ? "Propostas aguardando a sua decisão" : prop ? "Propostas de destinação" : "Decisões recentes"}</h3><span class="sub">${dec ? plural(props.length, "proposta", "propostas") : prop ? "a decisão é da Reitoria ou da PRA, por assinatura" : ""}</span><span class="sp"></span>${dec ? `<button class="btn sm primary" data-act="det-nova">${ic("plus")}Decidir destinação</button>` : prop ? `<button class="btn sm primary" data-act="det-nova">${ic("plus")}Propor destinação</button>` : ""}</div>
+  return `<section class="card" style="margin-bottom:16px"><div class="card-h"><h3>${dec ? "Propostas aguardando a sua decisão" : prop ? "Propostas de destinação" : "Decisões recentes"}</h3><span class="sub">${dec ? plural(props.length, "proposta", "propostas") : prop ? "a decisão é de um autorizador, por assinatura" : ""}</span><span class="sp"></span>${dec ? `<button class="btn sm primary" data-act="det-nova">${ic("plus")}Decidir destinação</button>` : prop ? `<button class="btn sm primary" data-act="det-nova">${ic("plus")}Propor destinação</button>` : ""}</div>
     ${blocoDec}${blocoProp}${rec.length ? `<div class="card-h" style="border-top:1px solid var(--line-2)"><h3 style="font-size:14px">Iniciados por decisão, em formalização</h3></div>${blocoRec}` : ""}</section>`;
 }
 function detMontarPlano(id) {
@@ -2823,7 +2824,7 @@ function formDeterminacao(pre) {
   const st = computeStock(); const mats = Object.values(S.items).filter(i => st[i.id].disp > 0).sort((a, b) => a.descricao.localeCompare(b.descricao, "pt-BR"));
   let rows = (pre.itens && pre.itens.length ? pre.itens : [{material_id:"", quantidade:""}]).map(x => ({...x}));
   const dec = canDeterminar();
-  const m = openModal({title:dec ? "Decidir destinação" : "Propor destinação", sub:dec ? "Você assina a decisão; o plano é iniciado e a Formalização é avisada" : "A proposta vai para a Reitoria e a PRA; o plano só começa depois da assinatura", body:`
+  const m = openModal({title:dec ? "Decidir destinação" : "Propor destinação", sub:dec ? "Você assina a decisão; o plano é iniciado e a Formalização é avisada" : "A proposta vai para os autorizadores; o plano só começa depois da assinatura", body:`
     <div class="field"><label>Unidade de destino</label><div id="upk-det"></div></div>
     <div id="det-rows" style="margin-top:10px"></div><button class="btn sm" id="det-add" style="margin-top:6px">${ic("plus")}Outro bem</button>
     <div class="field" style="margin-top:12px"><label>Observação <span class="muted">(opcional)</span></label><input class="inp" id="det-obs" value="${esc(pre.observacao || "")}" placeholder="Ex.: atender a nova sala de aula do bloco B"></div>`,
@@ -2927,11 +2928,11 @@ function chatDeterminarMontar(s, msg) {
     return `${disp1}\n${resumo}\nA decisão é registrada com a sua **assinatura eletrônica**. Só depois dela o plano é iniciado e a Formalização é avisada.`;
   }
   if (canPropor()) {
-    act({tipo:"propor", rotulo:"Enviar para decisão da Reitoria/PRA", det:dados});
+    act({tipo:"propor", rotulo:"Enviar para o autorizador", det:dados});
     act({tipo:"determinar_ajustar", rotulo:"Ajustar antes", det:dados});
-    return `${disp1}\n${resumo}\nPosso enviar como **proposta** para a decisão da Reitoria e da PRA. O plano só é iniciado depois da assinatura de uma delas.`;
+    return `${disp1}\n${resumo}\nPosso enviar como **proposta** para a decisão dos autorizadores. O plano só é iniciado depois da assinatura de um deles.`;
   }
-  return `${disp1}\nA destinação é decidida pela Reitoria ou pela Pró-Reitoria de Administração, por assinatura. A Divisão de Patrimônio e o Almoxarifado podem propor.`;
+  return `${disp1}\nA destinação é decidida por um autorizador, com assinatura. A Divisão de Patrimônio, o Almoxarifado e o gestor podem propor.`;
 }
 
 // ---------- AUTORIZAÇÕES ----------
@@ -3133,12 +3134,12 @@ function vConfig() {
       <div class="field full"><label>Fundamentação padrão dos termos</label><textarea class="inp" name="fundamentacao">${esc(c.fundamentacao)}</textarea></div>
     </div></section>
     <section class="card c-6"><div class="card-h"><h3>Autoridades signatárias e alçada</h3></div><div class="card-b form-grid">
-      <div class="field"><label>Nome — Pró-Reitoria de Administração</label><input class="inp" name="praNome" value="${esc(c.signatarios.PRA.nome)}"></div>
+      <div class="field"><label>Autorizador nível 1 — nome</label><input class="inp" name="praNome" value="${esc(c.signatarios.PRA.nome)}"></div>
       <div class="field"><label>Cargo</label><input class="inp" name="praCargo" value="${esc(c.signatarios.PRA.cargo)}"></div>
-      <div class="field"><label>Nome — Reitoria</label><input class="inp" name="reiNome" value="${esc(c.signatarios.REITORIA.nome)}"></div>
+      <div class="field"><label>Autorizador nível 2 — nome</label><input class="inp" name="reiNome" value="${esc(c.signatarios.REITORIA.nome)}"></div>
       <div class="field"><label>Cargo</label><input class="inp" name="reiCargo" value="${esc(c.signatarios.REITORIA.cargo)}"></div>
-      <div class="field"><label>Limite de alçada da PRA (R$)</label><input class="inp num" name="limiteAlcada" type="number" min="0" step="100" value="${c.limiteAlcada}"><span class="hint">Acima deste valor, a Reitoria também assina.</span></div>
-      <div class="field" style="justify-content:flex-end;gap:10px"><label class="check"><input type="checkbox" name="exigirAmbos" ${c.exigirAmbos ? "checked" : ""}> Exigir as duas assinaturas sempre</label><label class="check"><input type="checkbox" name="sequencial" ${c.sequencial ? "checked" : ""}> PRA assina antes da Reitoria</label></div>
+      <div class="field"><label>Limite de alçada do nível 1 (R$)</label><input class="inp num" name="limiteAlcada" type="number" min="0" step="100" value="${c.limiteAlcada}"><span class="hint">Acima deste valor, o autorizador de nível 2 também assina.</span></div>
+      <div class="field" style="justify-content:flex-end;gap:10px"><label class="check"><input type="checkbox" name="exigirAmbos" ${c.exigirAmbos ? "checked" : ""}> Exigir as duas assinaturas sempre</label><label class="check"><input type="checkbox" name="sequencial" ${c.sequencial ? "checked" : ""}> Nível 1 assina antes do nível 2</label></div>
     </div></section>
     <section class="card c-12"><div class="card-h"><h3>Prazos e alertas</h3><span class="sub">em dias</span></div><div class="card-b form-grid">
       ${["RASCUNHO","INSTRUCAO","AUTORIZACAO","AUTORIZADO","SEPARACAO","PRONTO"].map(s => `<div class="field"><label>Prazo em “${ST[s].l}”</label><input class="inp num" type="number" min="1" name="sla_${s}" value="${c.sla[s]}"></div>`).join("")}
@@ -3588,7 +3589,7 @@ function rulesText() {
   return `Você é o Assistente do Destina, sistema de gestão da reserva técnica de bens permanentes da ${S.cfg.instituicao} (${S.cfg.sigla}).
 Hoje é ${new Date().toLocaleDateString("pt-BR")}. Você conversa com ${S.me.name || "um servidor"}, no perfil "${rl}". Esse perfil pode: ${perms}.
 
-Fluxo de um plano de destinação: Rascunho → Em instrução (Formalização registra processo SIPAC) → Aguardando autorização (PRA assina; acima de ${BRL.format(S.cfg.limiteAlcada)} também a Reitoria${S.cfg.sequencial ? ", nessa ordem" : ""}) → Autorizado → Em separação (Almoxarifado confere) → Pronto para entrega → Entregue (Patrimônio registra tombamentos e termo de responsabilidade). "Disponível" = recebido − em trâmite − reservado − entregue. Planos "HIST" são saídas antigas importadas da planilha. As unidades seguem a hierarquia SIPAC: filtrar por um órgão (ex.: "CCS", "PRA") inclui as subunidades dele.
+Fluxo de um plano de destinação: Rascunho → Em instrução (Formalização registra processo SIPAC) → Aguardando autorização (assina o autorizador de nível 1; acima de ${BRL.format(S.cfg.limiteAlcada)}, também o de nível 2${S.cfg.sequencial ? ", nessa ordem" : ""}) → Autorizado → Em separação (Almoxarifado confere) → Pronto para entrega → Entregue (Patrimônio registra tombamentos e termo de responsabilidade). "Disponível" = recebido − em trâmite − reservado − entregue. Planos "HIST" são saídas antigas importadas da planilha. As unidades seguem a hierarquia SIPAC: filtrar por um órgão (ex.: "CCS", "PRA") inclui as subunidades dele.
 
 Controle por empenho: o Almoxarifado registra o empenho quando os bens chegam (entram no saldo) → o processo de pagamento vai à DIPA → a DIPA gera os tombamentos → agenda e conclui o emplaquetamento. Na entrega, os números de tombamento baixam os bens da reserva.
 
@@ -3638,7 +3639,7 @@ function runAction(a) {
       AS.msgs.push({role:"assistant", text:`Decisão assinada. **${esc(r.plano || "")}** iniciado (${esc(r.determinacao || "")}): ${a.det.itens.map(i => `${fmtN(i.quantidade)} × ${esc((S.items[i.material_id] || {}).descricao || "")}`).join("; ")} para **${esc(a.det.unidade)}**. Está em formalização. ${aviso}`, actions:pl ? [{tipo:"abrir_plano", plano_id:pl.id, rotulo:"Acompanhar " + pl.numero}] : [], used:[]}); logAssist({tipo:"resposta", texto:"Decisão assinada pelo chat"}); if (!AS.open) openChat(); drawChat(); });
       break;
     case "propor": proporDestinacao(a.det).then(r => { if (!r) return; renderShell(); render();
-      AS.msgs.push({role:"assistant", text:`Proposta **${esc(r.determinacao)}** enviada para a decisão da Reitoria e da PRA: ${a.det.itens.map(i => `${fmtN(i.quantidade)} × ${esc((S.items[i.material_id] || {}).descricao || "")}`).join("; ")} para **${esc(a.det.unidade)}**. O plano começa quando uma delas assinar.${r.demo ? " Na demonstração, o e-mail não é enviado." : ""}`, actions:[], used:[]}); logAssist({tipo:"resposta", texto:"Proposta enviada pelo chat"}); if (!AS.open) openChat(); drawChat(); });
+      AS.msgs.push({role:"assistant", text:`Proposta **${esc(r.determinacao)}** enviada para a decisão dos autorizadores: ${a.det.itens.map(i => `${fmtN(i.quantidade)} × ${esc((S.items[i.material_id] || {}).descricao || "")}`).join("; ")} para **${esc(a.det.unidade)}**. O plano começa quando uma delas assinar.${r.demo ? " Na demonstração, o e-mail não é enviado." : ""}`, actions:[], used:[]}); logAssist({tipo:"resposta", texto:"Proposta enviada pelo chat"}); if (!AS.open) openChat(); drawChat(); });
       break;
     case "determinar_ajustar": formDeterminacao({...a.det, unidade:a.det.unidade, unidadeCode:a.det.unidadeCode}); break;
     case "formalizar": go("plano-" + a.plano_id); setTimeout(() => act_formalize(a.plano_id), 120); break;
@@ -4028,7 +4029,7 @@ function nluResponder(nl, msg) {
     }
     case "pessoas": {
       const sg = Object.entries(S.cfg.signatarios || {}).map(([r, x]) => `- ${esc(x.cargo)}: ${esc(x.nome)}`).join("\n");
-      return `**Quem autoriza**\n${sg}\n- Limite de alçada do Pró-Reitor: ${BRL.format(S.cfg.limiteAlcada || 0)} (acima disso, assina também a Reitoria)`;
+      return `**Quem autoriza**\n${sg}\n- Limite de alçada do autorizador de nível 1: ${BRL.format(S.cfg.limiteAlcada || 0)} (acima disso, assina também o de nível 2)`;
     }
     case "plano_detalhe": case "empenho_detalhe": case "tombamento": return null; // tratados pelas regras específicas
   }
@@ -4291,7 +4292,7 @@ function localAnswerRegras(q, msg) {
   if (/USUARIO|SIGNATARI|QUEM ASSINA|QUEM AUTORIZA|ADMINISTRADOR|EQUIPE|PERFIS|PAPEIS/.test(n)) {
     const sg = Object.entries(S.cfg.signatarios || {}).map(([r, x]) => `- ${esc(x.cargo)}: ${esc(x.nome)}`).join("\n");
     const us = (S.perfisList || []).filter(p => p.aprovado);
-    return "**Signatários**\n" + sg + `\n- Limite de alçada do Pró-Reitor: ${BRL.format(S.cfg.limiteAlcada || 0)}` + (us.length ? "\n\n**Usuários aprovados**\n" + lista(us, p => `- ${esc(p.nome || p.email)}: ${esc(p.papeis.map(r => ROLES[r] ? ROLES[r].label : r).join(", "))}`, 15) : "");
+    return "**Signatários**\n" + sg + `\n- Limite de alçada do autorizador de nível 1: ${BRL.format(S.cfg.limiteAlcada || 0)}` + (us.length ? "\n\n**Usuários aprovados**\n" + lista(us, p => `- ${esc(p.nome || p.email)}: ${esc(p.papeis.map(r => ROLES[r] ? ROLES[r].label : r).join(", "))}`, 15) : "");
   }
   // i) entradas recentes
   if (/ENTRADA|CHEGOU|CHEGARAM|RECEBIDO|RECEBEMOS|COMPRAD|AQUISIC|EMPENHO|NOTA FISCAL|PREGAO|FORNECEDOR/.test(n)) {
