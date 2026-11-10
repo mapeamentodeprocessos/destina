@@ -853,6 +853,15 @@ async function persistSig(rec) {
 function handleDbError(e) { toast((e && e.message) || "Não foi possível gravar agora. Tente novamente.", true); }
 function saveDemo() { lsSet(DEMO_KEY, {items:S.items, plans:S.plans, cfg:S.cfg, sigs:S.sigs, alog:S.alog || [], orgCustom:S.orgCustom || null, empenhos:S.empenhos || {}, bens:S.bens || {}, determ:S.determ || {}, v:2}); }
 
+// demonstrações salvas antes da troca dos signatários passam a usar os nomes atuais
+function migraNomesDemo() {
+  const T = {"Prof. Ricardo Albuquerque":"George Beltrão", "Prof.ª Helena Cavalcanti":"Terezinha Domiciano"}; let mud = false;
+  const fix = o => { if (o && T[o.nome]) { o.nome = T[o.nome]; mud = true; } };
+  if (S.cfg && S.cfg.signatarios) Object.values(S.cfg.signatarios).forEach(fix);
+  Object.values(S.plans || {}).forEach(p => Object.values(p.assinaturas || {}).forEach(fix));
+  Object.values(S.sigs || {}).forEach(fix);
+  if (mud) saveDemo();
+}
 // ---------- eventos com cadeia de hash ----------
 async function addEvent(p, tipo, msg, extra = {}) {
   p.eventos = p.eventos || [];
@@ -1179,7 +1188,7 @@ async function boot() {
   if (saved && saved.v === 2 && saved.items && Object.keys(saved.items).length) {
     S.items = saved.items; S.plans = saved.plans || {}; S.cfg = {...CFG_DEFAULT(), ...(saved.cfg || {})}; S.sigs = saved.sigs || {}; S.alog = saved.alog || []; if (saved.orgCustom) { S.orgCustom = saved.orgCustom; loadOrg(saved.orgCustom.u, saved.orgCustom); }
     if (saved.empenhos) { S.empenhos = saved.empenhos; S.bens = saved.bens || {}; } else { seedEmpenhosDemo(); saveDemo(); }
-    S.determ = saved.determ || {};
+    S.determ = saved.determ || {}; migraNomesDemo();
   } else {
     S.cfg = CFG_DEFAULT();
     S.cfg.signatarios = {PRA:{nome:"George Beltrão", cargo:"Pró-Reitor de Administração"}, REITORIA:{nome:"Terezinha Domiciano", cargo:"Reitora"}};
@@ -1230,7 +1239,7 @@ function leaveToDemo() {
   S.mode = "demo";
   const saved = lsGet(DEMO_KEY);
   loadOrgDefault(); if (saved) { S.items = saved.items; S.plans = saved.plans; S.cfg = {...CFG_DEFAULT(), ...saved.cfg}; S.sigs = saved.sigs || {}; S.alog = saved.alog || []; if (saved.orgCustom) { S.orgCustom = saved.orgCustom; loadOrg(saved.orgCustom.u, saved.orgCustom); } if (saved.empenhos) { S.empenhos = saved.empenhos; S.bens = saved.bens || {}; } else seedEmpenhosDemo(); S.determ = saved.determ || {}; }
-  enterDemoPersona(lsGet("destina_persona") || "u_pat", true);
+  migraNomesDemo(); enterDemoPersona(lsGet("destina_persona") || "u_pat", true);
   renderShell(); render();
   toast("Você está no ambiente de demonstração.");
 }
