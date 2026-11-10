@@ -1098,7 +1098,7 @@ async function sbLoad(force) {
   const EI = {}; eits.forEach(i => { const x = {id:i.id, seq:i.seq, descricao:i.descricao, unidadeMedida:i.unidade_medida, qtd:i.qtd, vu:+i.vu, materialId:i.material_id, loteId:i.lote_id, empenhoId:i.empenho_id}; EI[i.id] = x; if (EM[i.empenho_id]) EM[i.empenho_id].itens.push(x); });
   const BE = {}; bens.forEach(b => { const it = EI[b.empenho_item_id]; BE[b.numero] = {numero:b.numero, itemId:b.empenho_item_id, empenhoId:it ? it.empenhoId : null, materialId:b.material_id, situacao:b.situacao, planoId:b.plano_id, geradoPor:b.gerado_por, geradoEm:ms(b.gerado_em), entregueEm:ms(b.entregue_em)}; });
   S.empenhos = EM; S.bens = BE;
-  const DT = {}; dets.forEach(d => DT[d.id] = {id:d.id, numero:d.numero, papel:d.papel, autor:d.autor, unidade:d.unidade, unidadeCode:d.unidade_code, itens:d.itens || [], observacao:d.observacao, situacao:d.situacao, planoId:d.plano_id, origem:d.origem, criadoEm:ms(d.criado_em)}); S.determ = DT;
+  const DT = {}; dets.forEach(d => DT[d.id] = {id:d.id, numero:d.numero, papel:d.papel, autor:d.autor, unidade:d.unidade, unidadeCode:d.unidade_code, itens:d.itens || [], observacao:d.observacao, situacao:d.situacao, planoId:d.plano_id, origem:d.origem, criadoEm:ms(d.criado_em), propostoPor:d.proposto_por, propostoPapel:d.proposto_papel, propostoEm:d.proposto_em ? ms(d.proposto_em) : null, assinatura:d.assinatura ? {...d.assinatura, assinadoEm:d.assinatura.assinado_em} : null, motivoRecusa:d.motivo_recusa}); S.determ = DT;
   S.alog = logs.map(l => ({at:ms(l.em), by:l.por, role:l.papel, tipo:l.tipo, texto:l.texto, acao:l.acao}));
   const mk = meta[0] ? JSON.stringify(meta[0]) : "";
   if (mk && S.orgMetaKey !== mk) { const us = await q("unidades", "select=code,name,parent_code&order=ordem"); if (us.length) { loadOrg(us.map(u => [u.code, u.name, u.parent_code || ""]), {fonte:meta[0].fonte, atualizadoEm:meta[0].atualizado_em}); S.orgMetaKey = mk; } }
@@ -1272,7 +1272,7 @@ function go(k) { if (location.hash === "#" + k) { routeFromHash(); render(); } e
 const navCount = k => {
   if (k === "autorizacoes") return Object.values(S.plans).filter(p => can.sign(p)).length;
   if (k === "entregas") return Object.values(S.plans).filter(p => (p.status === "AUTORIZADO" || p.status === "SEPARACAO") && can.separate() || p.status === "PRONTO" && can.deliver()).length;
-  if (k === "planos") return Object.values(S.plans).filter(p => p.status === "INSTRUCAO" && can.formalize()).length + (can.createPlan() ? detAbertas().length : 0);
+  if (k === "planos") return Object.values(S.plans).filter(p => p.status === "INSTRUCAO" && can.formalize()).length + (canDeterminar() ? detPropostas().length : 0);
   if (k === "empenhos") return empList().filter(e => e.situacao === "RECEBIDO" && R() === "ALMOXARIFADO" || empCanTombar() && (e.situacao === "NA_DIPA" || e.situacao === "TOMBADO" || e.situacao === "EMPLAQUETAMENTO_AGENDADO" && e.emplData && e.emplData <= now() + DAY)).length;
   if (k === "monitoramento") return 0;
   return 0;
@@ -1875,8 +1875,9 @@ const fmtLongo = t => new Date(t).toLocaleDateString("pt-BR", {day:"numeric", mo
 const fmtSemana = t => new Date(t).toLocaleDateString("pt-BR", {weekday:"long"});
 function planOrigem(p) {
   const d = detList().find(x => x.planoId === p.id);
-  if (d) { const sg = S.cfg.signatarios[d.papel] || {}; return {decisao:true, txt:`decisão ${d.papel === "REITORIA" ? "da" : "do"} ${sg.cargo || d.papel}${sg.nome ? " " + sg.nome : ""}`}; }
-  if (/^Destinação determinada por decisão/.test(p.justificativa || "")) return {decisao:true, txt:"decisão da autoridade"};
+  if (d) { const sg = S.cfg.signatarios[d.papel] || {}; const pr = d.propostoPapel && ROLES[d.propostoPapel] ? `proposta ${/^Almox/.test(ROLES[d.propostoPapel].label) ? "do" : "da"} ${ROLES[d.propostoPapel].label} e ` : "";
+    return {decisao:true, txt:`${pr}decisão assinada ${d.papel === "REITORIA" ? "da" : "do"} ${sg.cargo || d.papel}${sg.nome ? " " + sg.nome : ""}`}; }
+  if (/^Destinação determinada por decisão/.test(p.justificativa || "")) return {decisao:true, txt:"decisão assinada da autoridade"};
   const ev = (p.eventos || [])[0]; const r = ev && ROLES[ev.role] ? ROLES[ev.role].label : "";
   return {decisao:false, txt:r ? `iniciativa ${/^(Almox|Divis)/.test(r) ? (r.startsWith("Almox") ? "do " : "da ") : "de "}${r}` : ""};
 }
@@ -2708,32 +2709,56 @@ function seedEmpenhosDemo() {
 }
 
 // ---------- DETERMINAÇÕES DE DESTINAÇÃO (Reitoria e Pró-Reitoria, pela tela ou pelo chat) ----------
-const canDeterminar = () => has("PRA", "REITORIA", "ADMIN");
+const canDeterminar = () => has("PRA", "REITORIA"); // decisão: só a Reitoria e a PRA, com assinatura
+const canPropor = () => has("PATRIMONIO", "ALMOXARIFADO", "ADMIN"); // DIPA, Almoxarifado e gestor propõem; a decisão é da autoridade
+const detPropostas = () => detList().filter(d => d.situacao === "PROPOSTA");
 const detList = () => Object.values(S.determ || {}).sort((a, b) => b.criadoEm - a.criadoEm);
 const detAbertas = () => detList().filter(d => d.situacao === "ABERTA");
-const DET_RPC = {registrar:"registrar_determinacao", atender:"atender_determinacao", cancelar:"cancelar_determinacao"};
+const DET_RPC = {registrar:"registrar_determinacao", atender:"atender_determinacao", cancelar:"cancelar_determinacao", propor:"propor_destinacao", recusar:"recusar_proposta"};
 async function detDo(op, args, okMsg) {
   if (S.mode === "oficial") return sbDo(DET_RPC[op], {p_papel:R(), ...args}, okMsg);
   try { const r = await DET_LOCAL[op](args); saveDemo(); renderShell(); render(); if (okMsg) toast(okMsg); return r === undefined ? true : r; }
   catch (e) { toast(e.message, true); return false; }
 }
 const DET_LOCAL = {
-  async registrar({p_dados:d}) {
+  async propor({p_dados:d}) {
+    if (!canPropor()) throw new Error(`O perfil "${R()}" não pode executar esta ação.`);
+    if (!String(d.unidade || "").trim()) throw new Error("Informe a unidade de destino.");
+    if (!(d.itens || []).length) throw new Error("Informe ao menos um bem a destinar.");
+    const st = computeStock();
+    const itens = d.itens.map(x => { const it = S.items[x.material_id]; if (!it) throw new Error("Material não encontrado."); if (!(x.quantidade > 0)) throw new Error(`Quantidade inválida para "${it.descricao}".`); if (x.quantidade > st[it.id].disp) throw new Error(`Só há ${st[it.id].disp} disponíveis de "${it.descricao}".`); return {material_id:it.id, descricao:it.descricao, quantidade:x.quantidade}; });
+    const yr = new Date().getFullYear(); const n = detList().filter(x => new Date(x.criadoEm).getFullYear() === yr).length + 1;
+    const det = {situacao:"PROPOSTA", id:"dt" + rid(10), numero:`DT ${String(n).padStart(4, "0")}/${yr}`, papel:R(), autor:S.me.id, unidade:d.unidade.trim(), unidadeCode:d.unidadeCode || "", itens, observacao:d.observacao || "", planoId:null, origem:d.origem || "tela", criadoEm:now(), propostoPor:S.me.id, propostoPapel:R(), propostoEm:now()};
+    S.determ[det.id] = det;
+    return {determinacao_id:det.id, determinacao:det.numero, notificados:0, decisores:PERSONAS.filter(x => x.roles.some(r => r === "REITORIA" || r === "PRA")).length, demo:true};
+  },
+  recusar({p_id, p_motivo}) {
+    const d = S.determ[p_id]; if (!d || d.situacao !== "PROPOSTA") throw new Error("Esta proposta não está mais aguardando decisão.");
+    if (canDeterminar()) { if (!String(p_motivo || "").trim()) throw new Error("Informe o motivo da recusa."); d.situacao = "RECUSADA"; d.motivoRecusa = p_motivo.trim(); }
+    else { if (d.propostoPor !== S.me.id && R() !== "ADMIN") throw new Error("Só quem propôs (ou o gestor) pode retirar a proposta."); d.situacao = "CANCELADA"; d.motivoRecusa = (p_motivo || "").trim() || "Retirada por quem propôs"; }
+  },
+  async registrar({p_dados:d0}) {
     if (!canDeterminar()) throw new Error(`O perfil "${R()}" não pode executar esta ação.`);
+    let prop = null, d = d0;
+    if (d0.proposta_id) { prop = S.determ[d0.proposta_id]; if (!prop || prop.situacao !== "PROPOSTA") throw new Error("Esta proposta não está mais aguardando decisão."); d = {unidade:prop.unidade, unidadeCode:prop.unidadeCode, itens:(d0.itens || prop.itens).map(i => ({material_id:i.material_id, quantidade:i.quantidade})), observacao:prop.observacao, origem:prop.origem}; }
     if (!String(d.unidade || "").trim()) throw new Error("Informe a unidade de destino.");
     if (!(d.itens || []).length) throw new Error("Informe ao menos um bem a destinar.");
     const st = computeStock();
     const itens = d.itens.map(x => { const it = S.items[x.material_id]; if (!it) throw new Error("Material não encontrado."); if (!(x.quantidade > 0)) throw new Error(`Quantidade inválida para "${it.descricao}".`); if (x.quantidade > st[it.id].disp) throw new Error(`Só há ${st[it.id].disp} disponíveis de "${it.descricao}".`); return {material_id:it.id, descricao:it.descricao, quantidade:+x.quantidade}; });
     const yr = new Date().getFullYear(); const n = detList().filter(x => new Date(x.criadoEm).getFullYear() === yr).length + 1;
-    const det = {id:"dt" + rid(10), numero:`DT ${String(n).padStart(4, "0")}/${yr}`, papel:R(), autor:S.me.id, unidade:d.unidade.trim(), unidadeCode:d.unidadeCode || "", itens, observacao:d.observacao || "", situacao:"ABERTA", planoId:null, origem:d.origem || "tela", criadoEm:now()};
+    const sgn = S.cfg.signatarios[R()] || {};
+    const assinatura = {assinadoEm:now(), por:S.me.id, nome:sgn.nome || S.me.nome, cargo:sgn.cargo || R(), papel:R(), demo:true};
+    const det = prop ? Object.assign(prop, {papel:R(), autor:S.me.id, itens, assinatura}) : {assinatura, id:"dt" + rid(10), numero:`DT ${String(n).padStart(4, "0")}/${yr}`, papel:R(), autor:S.me.id, unidade:d.unidade.trim(), unidadeCode:d.unidadeCode || "", itens, observacao:d.observacao || "", situacao:"ABERTA", planoId:null, origem:d.origem || "tela", criadoEm:now()};
     S.determ[det.id] = det;
-    // a decisão inicia o plano e o envia para a Formalização
+    // a decisão assinada inicia o plano e o envia para a Formalização
     const nums = Object.values(S.plans).map(x => (x.numero || "").match(/(\d+)\/(\d{4})/)).filter(x => x && +x[2] === yr).map(x => +x[1]);
     const cargo = detCargo(det); const orgU = det.unidadeCode ? orgaoOf(det.unidadeCode) : null;
     const p = {id:"pl" + rid(10), numero:"PD " + String((nums.length ? Math.max(...nums) : 0) + 1).padStart(4, "0") + "/" + yr, criadoEm:now(), criadoPor:S.me.id, eventos:[], etapas:[], assinaturas:{}, conferencia:{}, entrega:null,
-      unidade:det.unidade, unidadeCode:det.unidadeCode, orgaoCode:orgU ? orgU.code : "", finalidade:("Determinação " + det.numero).slice(0, 70), justificativa:`Destinação determinada por decisão — ${cargo} (${det.numero}, ${fmtD(det.criadoEm)}).${det.observacao ? " " + det.observacao : ""}`, demanda:det.numero,
+      unidade:det.unidade, unidadeCode:det.unidadeCode, orgaoCode:orgU ? orgU.code : "", finalidade:("Determinação " + det.numero).slice(0, 70), justificativa:`Destinação determinada por decisão assinada — ${cargo} (${det.numero}, ${fmtD(det.criadoEm)}).${det.observacao ? " " + det.observacao : ""}`, demanda:det.numero,
       itens:itens.map(i => { const it = S.items[i.material_id]; return {itemId:it.id, codigo:it.codigo, descricao:it.descricao, qtd:i.quantidade, vu:it.valorUnitario}; })};
-    setStatus(p, "RASCUNHO"); await addEvent(p, "criacao", `Plano iniciado por decisão — ${cargo} (${det.numero})${det.origem === "chat" ? " pelo assistente" : ""}`);
+    setStatus(p, "RASCUNHO");
+    if (prop) await addEvent(p, "proposta", `Destinação proposta por ${nameOf(prop.propostoPor)} (${det.numero})`, {by:prop.propostoPor, role:prop.propostoPapel, at:prop.propostoEm});
+    await addEvent(p, "assinatura", `Decisão assinada eletronicamente — ${cargo} (${det.numero}). Plano iniciado${det.origem === "chat" ? " pelo assistente" : ""}`);
     setStatus(p, "INSTRUCAO"); await addEvent(p, "envio", "Enviado para instrução documental (Formalização)");
     S.plans[p.id] = p; det.situacao = "ATENDIDA"; det.planoId = p.id;
     const formal = PERSONAS.filter(x => x.roles.includes("FORMALIZACAO")).length;
@@ -2743,17 +2768,51 @@ const DET_LOCAL = {
   cancelar({p_id, p_motivo}) { const d = S.determ[p_id]; if (!d || d.situacao !== "ABERTA" || (d.autor !== S.me.id && R() !== "ADMIN")) throw new Error("Só quem determinou (ou o gestor) pode cancelar uma determinação aberta."); d.situacao = "CANCELADA"; d.observacao = (d.observacao + " [Cancelada" + (p_motivo ? ": " + p_motivo : "") + "]").trim(); }
 };
 const detCargo = d => (S.cfg.signatarios[d.papel] || {}).cargo || (d.papel === "ADMIN" ? "Gestor do sistema" : d.papel);
+// a decisão é assinada: declaração + (no ambiente oficial) senha e código por e-mail
+function assinarDecisao(dados, opts = {}) {
+  return new Promise(resolve => {
+    const sg = S.cfg.signatarios[R()] || {}; const st = computeStock();
+    const itens = (dados.itens || []).map(i => ({...i, it:S.items[i.material_id]}));
+    const m = openModal({title:opts.titulo || "Assinar a decisão de destinação", sub:"A decisão assinada inicia o plano e avisa a Formalização", body:`
+      <div class="alert good" style="margin-bottom:12px"><div class="ic">${ic("check")}</div><div><b>Disponibilidade conferida</b><p>${itens.map(i => `${fmtN(i.quantidade)} × ${esc(i.it ? i.it.descricao : i.descricao || "")} · ${fmtN(i.it && st[i.it.id] ? Math.max(0, st[i.it.id].disp) : 0)} disponíveis hoje`).join("<br>")}</p></div></div>
+      <table class="tbl"><tbody><tr><td class="muted">Destino</td><td><b>${esc(dados.unidade)}</b></td></tr>${opts.proposta ? `<tr><td class="muted">Proposta</td><td>${esc(opts.proposta.numero)} · ${esc(nameOf(opts.proposta.propostoPor))} (${esc((ROLES[opts.proposta.propostoPapel] || {}).label || opts.proposta.propostoPapel || "")}), ${fmtD(opts.proposta.propostoEm || opts.proposta.criadoEm)}</td></tr>` : ""}${dados.observacao ? `<tr><td class="muted">Observação</td><td>${esc(dados.observacao)}</td></tr>` : ""}</tbody></table>
+      <hr><label class="check"><input type="checkbox" id="ad-dec"> <span>Na qualidade de <b>${esc(sg.cargo || R())}</b>${sg.nome ? ` (${esc(sg.nome)})` : ""}, decido pela destinação acima e autorizo o início do plano.</span></label>`,
+      foot:`<button class="btn" data-act="close">Voltar</button><button class="btn primary" id="ad-go" disabled>${ic("autorizacoes")}Assinar e iniciar o plano</button>`});
+    let fim = false; const done = v => { if (!fim) { fim = true; resolve(v); } };
+    const ob = new MutationObserver(() => { if (!document.body.contains(m)) { ob.disconnect(); setTimeout(() => { if (!fim && !$(".modal")) done(false); }, 0); } });
+    ob.observe(document.body, {childList:true, subtree:true});
+    $("#ad-dec", m).onchange = e => { $("#ad-go", m).disabled = !e.target.checked; };
+    $("#ad-go", m).onclick = async () => {
+      $("#ad-go", m).disabled = true; fim = true; ob.disconnect();
+      if (S.mode === "oficial" && !await confirmarIdentidade(R(), "decisão de destinação")) { resolve(false); return; }
+      const r = await detDo("registrar", {p_dados:opts.proposta ? {proposta_id:opts.proposta.id} : dados}, null);
+      if (r) { closeModal(); toast(`Decisão assinada. ${r.plano || "Plano"} iniciado e enviado à Formalização${r.notificados ? ` (${plural(r.notificados, "aviso", "avisos")} por e-mail)` : ""}.`); }
+      resolve(r || false);
+    };
+  });
+}
+async function proporDestinacao(dados) {
+  const r = await detDo("propor", {p_dados:dados}, null);
+  if (r) toast(`Proposta ${r.determinacao} enviada para a decisão da Reitoria e da PRA${r.notificados ? ` (${plural(r.notificados, "aviso", "avisos")} por e-mail)` : ""}.`);
+  return r;
+}
 function detCard() {
-  const ab = detAbertas(); const meus = canDeterminar();
+  const dec = canDeterminar(), prop = canPropor();
+  const props = detPropostas();
+  const minhas = detList().filter(d => d.propostoPor === S.me.id && ["PROPOSTA","RECUSADA"].includes(d.situacao)).slice(0, 6);
   const rec = detList().filter(d => d.situacao === "ATENDIDA" && d.planoId && S.plans[d.planoId] && ["INSTRUCAO","RASCUNHO"].includes(S.plans[d.planoId].status));
-  if (!ab.length && !meus && !rec.length) return "";
-  if (!ab.length) return `<section class="card" style="margin-bottom:16px"><div class="card-h"><h3>Decisões de destinação</h3><span class="sub">${rec.length ? plural(rec.length, "plano aguardando formalização", "planos aguardando formalização") : "a decisão da Reitoria ou da PRA inicia o plano"}</span>${meus ? `<span class="sp"></span><button class="btn sm primary" data-act="det-nova">${ic("plus")}Determinar destinação</button>` : ""}</div>
-    ${rec.length ? `<div class="list">${rec.map(d => { const p = S.plans[d.planoId]; return `<a class="li" style="grid-template-columns:minmax(0,1fr) auto;text-decoration:none;color:inherit" href="#plano-${p.id}"><div class="it-t"><b>${esc(p.numero)} · ${esc(d.unidade)}</b><small>${d.itens.map(i => `${fmtN(i.quantidade)} × ${esc(i.descricao)}`).join("; ")}<br>Decisão: ${esc(detCargo(d))}, em ${fmtD(d.criadoEm)} (${esc(d.numero)})${d.origem === "chat" ? " · pelo assistente" : ""}</small></div><span class="pill"><i></i>${esc(ST[p.status].l)}</span></a>`; }).join("")}</div>`
-    : `<div class="card-b"><p class="small muted">A Reitora ou o Pró-Reitor podem decidir pelo assistente, por exemplo: “destinar 30 cadeiras para o CCS”. O plano é iniciado na hora e a Formalização recebe o aviso por e-mail.</p></div>`}</section>`;
-  return `<section class="card" style="margin-bottom:16px"><div class="card-h"><h3>Determinações de destinação</h3><span class="sub">${ab.length ? plural(ab.length, "aberta aguardando plano", "abertas aguardando plano") : "nenhuma aberta"}</span>${meus ? `<span class="sp"></span><button class="btn sm primary" data-act="det-nova">${ic("plus")}Determinar destinação</button>` : ""}</div>
-    ${ab.length ? `<div class="list">${ab.map(d => `<div class="li" style="grid-template-columns:minmax(0,1fr) auto"><div class="it-t"><b>${esc(d.numero)} · ${esc(d.unidade)}</b><small>${d.itens.map(i => `${fmtN(i.quantidade)} × ${esc(i.descricao)}`).join("; ")}<br>Decisão: ${esc(detCargo(d))}, em ${fmtD(d.criadoEm)}${d.origem === "chat" ? " · pelo assistente" : ""}${d.observacao ? " · " + esc(d.observacao) : ""}</small></div>
-      <div class="row" style="gap:6px">${can.createPlan() ? `<button class="btn sm primary" data-act="det-plano" data-id="${d.id}">Montar plano</button>` : ""}${(d.autor === S.me.id || R() === "ADMIN") ? `<button class="btn sm ghost" data-act="det-cancelar" data-id="${d.id}">Cancelar</button>` : ""}</div></div>`).join("")}</div>`
-    : `<div class="card-b"><p class="small muted">Diga ao assistente, por exemplo: “destinar 30 cadeiras para o CCS”. O plano é iniciado na hora e a Formalização recebe o aviso para formalizar.</p></div>`}</section>`;
+  if (!dec && !prop && !rec.length) return "";
+  const itensTxt = d => d.itens.map(i => `${fmtN(i.quantidade)} × ${esc(i.descricao)}`).join("; ");
+  const quemProp = d => `${esc(nameOf(d.propostoPor))} · ${esc((ROLES[d.propostoPapel] || {}).label || d.propostoPapel || "")}, ${fmtD(d.propostoEm || d.criadoEm)}`;
+  const blocoDec = dec ? (props.length ? `<div class="list">${props.map(d => `<div class="li" style="grid-template-columns:minmax(0,1fr) auto"><div class="it-t"><b>${esc(d.numero)} · ${esc(d.unidade)}</b><small>${itensTxt(d)}<br>Proposta de ${quemProp(d)}</small></div>
+      <div class="row" style="gap:6px"><button class="btn sm primary" data-act="det-assinar" data-id="${d.id}">${ic("autorizacoes")}Assinar decisão</button><button class="btn sm ghost" data-act="det-recusar" data-id="${d.id}">Recusar</button></div></div>`).join("")}</div>`
+      : `<div class="card-b"><p class="small muted">Nenhuma proposta aguardando. Para decidir, diga ao assistente, por exemplo: “destinar 30 cadeiras para o CCS”. Ele mostra a disponibilidade e pede a sua assinatura.</p></div>`) : "";
+  const blocoProp = prop ? (minhas.length ? `<div class="list">${minhas.map(d => `<div class="li" style="grid-template-columns:minmax(0,1fr) auto"><div class="it-t"><b>${esc(d.numero)} · ${esc(d.unidade)}</b><small>${itensTxt(d)}${d.situacao === "RECUSADA" ? `<br>Não aprovada: ${esc(d.motivoRecusa || "")}` : ""}</small></div>
+      <div class="row" style="gap:6px">${d.situacao === "PROPOSTA" ? `<span class="pill">Aguardando decisão</span><button class="btn sm ghost" data-act="det-retirar" data-id="${d.id}">Retirar</button>` : `<span class="pill" style="color:var(--crit-ink);background:var(--crit-soft)">Não aprovada</span>`}</div></div>`).join("")}</div>`
+      : `<div class="card-b"><p class="small muted">Para propor, diga ao assistente, por exemplo: “quero mandar um projetor para o CCEN”. Ele mostra a disponibilidade e envia a proposta para a decisão da Reitoria e da PRA. O plano só começa depois da assinatura.</p></div>`) : "";
+  const blocoRec = rec.length ? `<div class="list">${rec.map(d => { const p = S.plans[d.planoId]; return `<a class="li" style="grid-template-columns:minmax(0,1fr) auto;text-decoration:none;color:inherit" href="#plano-${p.id}"><div class="it-t"><b>${esc(p.numero)} · ${esc(d.unidade)}</b><small>${itensTxt(d)}<br>Decisão assinada: ${esc(detCargo(d))}, ${fmtD((d.assinatura || {}).assinadoEm || d.criadoEm)} (${esc(d.numero)})</small></div><span class="pill"><i></i>${esc(ST[p.status].l)}</span></a>`; }).join("")}</div>` : "";
+  return `<section class="card" style="margin-bottom:16px"><div class="card-h"><h3>${dec ? "Propostas aguardando a sua decisão" : prop ? "Propostas de destinação" : "Decisões recentes"}</h3><span class="sub">${dec ? plural(props.length, "proposta", "propostas") : prop ? "a decisão é da Reitoria ou da PRA, por assinatura" : ""}</span><span class="sp"></span>${dec ? `<button class="btn sm primary" data-act="det-nova">${ic("plus")}Decidir destinação</button>` : prop ? `<button class="btn sm primary" data-act="det-nova">${ic("plus")}Propor destinação</button>` : ""}</div>
+    ${blocoDec}${blocoProp}${rec.length ? `<div class="card-h" style="border-top:1px solid var(--line-2)"><h3 style="font-size:14px">Iniciados por decisão, em formalização</h3></div>${blocoRec}` : ""}</section>`;
 }
 function detMontarPlano(id) {
   const d = S.determ[id]; if (!d) return;
@@ -2763,11 +2822,12 @@ function formDeterminacao(pre) {
   pre = pre || {}; let uni = {code:pre.unidadeCode || "", name:pre.unidade || ""};
   const st = computeStock(); const mats = Object.values(S.items).filter(i => st[i.id].disp > 0).sort((a, b) => a.descricao.localeCompare(b.descricao, "pt-BR"));
   let rows = (pre.itens && pre.itens.length ? pre.itens : [{material_id:"", quantidade:""}]).map(x => ({...x}));
-  const m = openModal({title:"Determinar destinação", sub:"A decisão inicia o plano e avisa a Formalização por e-mail", body:`
+  const dec = canDeterminar();
+  const m = openModal({title:dec ? "Decidir destinação" : "Propor destinação", sub:dec ? "Você assina a decisão; o plano é iniciado e a Formalização é avisada" : "A proposta vai para a Reitoria e a PRA; o plano só começa depois da assinatura", body:`
     <div class="field"><label>Unidade de destino</label><div id="upk-det"></div></div>
     <div id="det-rows" style="margin-top:10px"></div><button class="btn sm" id="det-add" style="margin-top:6px">${ic("plus")}Outro bem</button>
     <div class="field" style="margin-top:12px"><label>Observação <span class="muted">(opcional)</span></label><input class="inp" id="det-obs" value="${esc(pre.observacao || "")}" placeholder="Ex.: atender a nova sala de aula do bloco B"></div>`,
-    foot:`<button class="btn" data-act="close">Cancelar</button><button class="btn primary" id="det-go">Registrar determinação</button>`});
+    foot:`<button class="btn" data-act="close">Cancelar</button><button class="btn primary" id="det-go">${dec ? "Revisar e assinar" : "Enviar para decisão"}</button>`});
   mountUnitPicker($("#upk-det", m), uni, v => { uni = v; });
   const draw = () => { $("#det-rows", m).innerHTML = rows.map((r, k) => `<div class="row" style="gap:8px;margin-bottom:6px"><select class="inp" data-dr="${k}" style="flex:1"><option value="">Escolha o bem…</option>${mats.map(i => `<option value="${i.id}" ${i.id === r.material_id ? "selected" : ""}>${esc(i.descricao)} (${fmtN(st[i.id].disp)} disp.)</option>`).join("")}</select><input class="inp num" data-dq="${k}" value="${esc(r.quantidade)}" placeholder="Qtd." inputmode="numeric" style="width:90px">${rows.length > 1 ? `<button class="btn ghost icon-btn" data-dx="${k}" aria-label="Remover">${ic("x")}</button>` : ""}</div>`).join(""); };
   draw();
@@ -2777,8 +2837,11 @@ function formDeterminacao(pre) {
   $("#det-go", m).onclick = async () => {
     const itens = rows.filter(r => r.material_id).map(r => ({material_id:r.material_id, quantidade:Math.round(+String(r.quantidade).replace(",", ".") || 0)}));
     if (!uni.name) { toast("Escolha a unidade de destino.", true); return; } if (!itens.length) { toast("Escolha ao menos um bem.", true); return; }
-    const r = await detDo("registrar", {p_dados:{unidade:uni.name, unidadeCode:uni.code || "", itens, observacao:$("#det-obs", m).value.trim(), origem:pre.origem || "tela"}}, null);
-    if (r) { closeModal(); toast(`${r.plano || "Plano"} iniciado e enviado à Formalização${r.notificados ? ` (${plural(r.notificados, "aviso", "avisos")} por e-mail)` : ""}.`); if (r.plano_id) location.hash = "plano-" + r.plano_id; }
+    const dados = {unidade:uni.name, unidadeCode:uni.code || "", itens, observacao:$("#det-obs", m).value.trim(), origem:pre.origem || "tela"};
+    const st2 = computeStock(); const falta = itens.find(i => !(i.quantidade > 0) || i.quantidade > Math.max(0, st2[i.material_id].disp));
+    if (falta) { toast(falta.quantidade > 0 ? `Só há ${fmtN(Math.max(0, st2[falta.material_id].disp))} disponíveis de ${S.items[falta.material_id].descricao}.` : "Informe a quantidade.", true); return; }
+    if (dec) { closeModal(); const r = await assinarDecisao(dados); if (r && r.plano_id) location.hash = "plano-" + r.plano_id; }
+    else { const r = await proporDestinacao(dados); if (r) closeModal(); }
   };
 }
 // ---------- pelo chat: determinar, autorizar e indeferir ----------
@@ -2798,11 +2861,20 @@ function chatDecisao(q, msg) {
     if (E.mat) { const prev = s.mat ? new Set(s.mat.its.map(i => i.id)) : null; const exato = Object.values(S.items).find(i => normName(i.descricao) === normName(q.trim())); s.mat = exato ? {...E.mat, its:[exato]} : prev ? {...E.mat, its:E.mat.its.filter(i => prev.has(i.id))} : E.mat; if (!s.mat.its.length) s.mat = E.mat; if (s.mat.its.length === 1) s.escolhido = true; }
     return chatDeterminarMontar(s, msg);
   }
-  const verboDest = /^(QUERO |GOSTARIA DE |POR FAVOR |PODE |PODERIA |VAMOS |PRECISO |PRECISAMOS |DEVEMOS )?(DESTINAR|DESTINE|DESTINA|DETERMINO|DETERMINE|DETERMINAR|MANDE|MANDAR|ENVIE|ENVIAR|ENCAMINHE|ENCAMINHAR|LIBERE|LIBERAR|REPASSE|REPASSAR|DOE|DOAR|ENTREGUE|ENTREGAR)\b|\b(FAZER|FACA|REALIZAR|ABRIR|INICIAR) (UMA |A )?DESTINACAO\b|\bQUERO (UMA |FAZER (UMA )?)?DESTINACAO\b|\bDESTINACAO DE\b/;
+  const verboDest = /^(QUERO |GOSTARIA DE |POR FAVOR |PODE |PODERIA |VAMOS |PRECISO |PRECISAMOS |DEVEMOS )?(DESTINAR|DESTINE|DESTINA|DETERMINO|DETERMINE|DETERMINAR|MANDE|MANDAR|ENVIE|ENVIAR|ENCAMINHE|ENCAMINHAR|LIBERE|LIBERAR|REPASSE|REPASSAR|DOE|DOAR|ENTREGUE|ENTREGAR)\b|\b(FAZER|FACA|REALIZAR|ABRIR|INICIAR) (UMA |A )?DESTINACAO\b|\bQUERO (UMA |FAZER (UMA )?)?DESTINACAO\b|\bDESTINACAO DE\b|\b(MONTE|MONTAR|CRIE|CRIAR|ABRA|INICIE|INICIAR) (UM |O )?PLANO\b/;
   if (verboDest.test(n) && (E.mat || E.cat)) {
     if (!E.qtd) { const W = {UM:1, UMA:1, DOIS:2, DUAS:2, TRES:3, QUATRO:4, CINCO:5, SEIS:6, SETE:7, OITO:8, NOVE:9, DEZ:10, VINTE:20, TRINTA:30, QUARENTA:40, CINQUENTA:50, CEM:100}; const ws = cru, alvo = normName((E.mat ? E.mat.txt : E.cat)).split(" ")[0], ix = ws.findIndex(x => x.startsWith(alvo.slice(0, 3))); if (ix > 0 && NUMW[ws[ix - 1]]) E.qtd = NUMW[ws[ix - 1]]; }
-    if (canDeterminar() || can.createPlan()) return chatDeterminarMontar({mat:E.mat, cat:E.cat, qtd:E.qtd, uni:E.uni}, msg);
-    return "Quem inicia a destinação é, via de regra, a Reitoria ou a Pró-Reitoria de Administração (a Divisão de Patrimônio e o Almoxarifado também podem). Pelo seu perfil, posso mostrar o saldo e acompanhar os planos.";
+    return chatDeterminarMontar({mat:E.mat, cat:E.cat, qtd:E.qtd, uni:E.uni}, msg);
+  }
+  if (verboDest.test(n)) { // pediu para destinar algo que não está na reserva: a primeira informação é a disponibilidade
+    const ws = normName(q).replace(/[?!.,;:]/g, " ").split(/\s+/).filter(Boolean);
+    const vi = ws.findIndex(w => /^(DESTIN|DETERMIN|MAND|ENVI|ENCAMINH|LIBER|REPASS|DOA|DOE|ENTREG|PLANO)/.test(w));
+    let it = ws.slice(vi + 1); const pi = it.findIndex(w => /^(PARA|PRA|PRO|AO|NO|NA)$/.test(w)); if (pi >= 0) it = it.slice(0, pi);
+    it = it.filter(w => !/^(UM|UMA|UNS|UMAS|O|A|OS|AS|DE|DO|DA|DOS|DAS|COM|\d+)$/.test(w) && !NUMW[w]);
+    if (it.length) { AS.slot = null; const termo = it.join(" ").toLowerCase();
+      const viz = Object.values(S.items).filter(i => computeStock()[i.id].disp > 0 && it.some(w => w.length > 3 && normName(i.descricao).includes(w.slice(0, 5))));
+      if (viz.length) msg.sug = viz.slice(0, 3).map(i => `Quero destinar ${i.descricao}`);
+      return `**Não há ${esc(termo)} disponível** na reserva técnica no momento.${viz.length ? " Itens parecidos com saldo:\n" + viz.slice(0, 3).map(i => `- ${esc(i.descricao)}: ${fmtN(computeStock()[i.id].disp)} disponíveis`).join("\n") : " A demanda pode ser registrada para a próxima aquisição."}`; }
   }
   // autorizar / indeferir pelo chat
   const autoriza = /^(EU )?(AUTORIZ\w*|ASSIN\w*|APROV\w*|DEFIR\w*|DEFERIR|PODE AUTORIZAR|QUERO AUTORIZAR|QUERO ASSINAR|LIBERO|OK PARA)\b/.test(n);
@@ -2839,21 +2911,27 @@ function chatDeterminarMontar(s, msg) {
     return `Temos ${cands.length} opções. Qual delas?\n` + cands.slice(0, 4).map(i => `- ${esc(i.descricao)}: ${fmtN(st[i.id].disp)} disponíveis`).join("\n");
   }
   const it = cands.slice().sort((a, b) => st[b.id].disp - st[a.id].disp)[0];
-  if (!it) { AS.slot = null; return "Não encontrei esse bem na reserva técnica."; }
+  if (!it) { AS.slot = null; const nome = s.mat ? (s.mat.orig || s.mat.txt).toLowerCase() : s.cat ? s.cat.toLowerCase() : "esse bem"; return `**Não há ${esc(nome)} disponível** na reserva técnica no momento. Todo o saldo está comprometido ou zerado; a demanda pode ser registrada para a próxima aquisição.`; }
   const disp = Math.max(0, st[it.id].disp);
-  if (!s.qtd) { AS.slot = s; return `Quantos **${esc(it.descricao)}** deseja destinar? Há **${fmtN(disp)}** disponíveis.`; }
-  if (!s.uni) { AS.slot = s; return `Para qual unidade vão os **${fmtN(s.qtd)} × ${esc(it.descricao)}**? (ex.: “para o CCS” ou “Biblioteca Central”)`; }
+  if (!s.qtd) { AS.slot = s; return `**${fmtN(disp)} disponíveis** de ${esc(it.descricao)}.\nQuantos deseja destinar?`; }
+  if (!s.uni) { AS.slot = s; return `**${fmtN(disp)} disponíveis** de ${esc(it.descricao)}.\nPara qual unidade vão os ${fmtN(s.qtd)}? (ex.: “para o CCS” ou “Biblioteca Central”)`; }
   AS.slot = null;
   if (s.qtd > disp) { if (disp > 0) AS.slot = {...s, qtd:null, sugQtd:disp}; }
-  if (s.qtd > disp) return `**Não há saldo suficiente:** há ${fmtN(disp)} disponíveis de ${esc(it.descricao)}, e o pedido é de ${fmtN(s.qtd)}. Quer destinar ${fmtN(disp)}?`;
+  if (s.qtd > disp) return `**Só há ${fmtN(disp)} disponíveis** de ${esc(it.descricao)}, e o pedido é de ${fmtN(s.qtd)}.${disp ? ` Quer destinar ${fmtN(disp)}?` : ""}`;
   const dados = {unidade:s.uni.name, unidadeCode:s.uni.code || "", itens:[{material_id:it.id, quantidade:s.qtd}], observacao:"", origem:"chat"};
+  const disp1 = `**${fmtN(disp)} disponíveis** de ${esc(it.descricao)} (ficam ${fmtN(disp - s.qtd)} após esta destinação).`;
+  const resumo = `- **${fmtN(s.qtd)} × ${esc(it.descricao)}** para **${esc(s.uni.name)}**`;
   if (canDeterminar()) {
-    act({tipo:"determinar", rotulo:"Confirmar determinação", det:dados});
+    act({tipo:"determinar", rotulo:"Assinar e iniciar o plano", det:dados});
     act({tipo:"determinar_ajustar", rotulo:"Ajustar antes", det:dados});
-    return `Vou registrar a determinação:\n- **${fmtN(s.qtd)} × ${esc(it.descricao)}** para **${esc(s.uni.name)}**\n- Disponível hoje: ${fmtN(disp)} (ficam ${fmtN(disp - s.qtd)})\nAo confirmar, o **plano é iniciado** e os servidores da Formalização recebem o aviso por e-mail para formalizar. Depois ele volta para a sua autorização.`;
+    return `${disp1}\n${resumo}\nA decisão é registrada com a sua **assinatura eletrônica**. Só depois dela o plano é iniciado e a Formalização é avisada.`;
   }
-  act({tipo:"criar_plano", rotulo:"Montar o plano", rascunho:{unidade:s.uni.name, unidadeCode:s.uni.code || "", finalidade:"", justificativa:"", itens:[{material_id:it.id, quantidade:s.qtd}]}});
-  return `Posso montar o plano: **${fmtN(s.qtd)} × ${esc(it.descricao)}** para **${esc(s.uni.name)}** (há ${fmtN(disp)} disponíveis).`;
+  if (canPropor()) {
+    act({tipo:"propor", rotulo:"Enviar para decisão da Reitoria/PRA", det:dados});
+    act({tipo:"determinar_ajustar", rotulo:"Ajustar antes", det:dados});
+    return `${disp1}\n${resumo}\nPosso enviar como **proposta** para a decisão da Reitoria e da PRA. O plano só é iniciado depois da assinatura de uma delas.`;
+  }
+  return `${disp1}\nA destinação é decidida pela Reitoria ou pela Pró-Reitoria de Administração, por assinatura. A Divisão de Patrimônio e o Almoxarifado podem propor.`;
 }
 
 // ---------- AUTORIZAÇÕES ----------
@@ -3439,7 +3517,7 @@ function tIndicadores() {
     planos_por_etapa:Object.fromEntries(STAGES.map(s => [ST[s].l, plans.filter(p => p.status === s && !p.legado).length])), planos_acima_do_prazo:plans.filter(isLate).map(p => p.numero),
     alertas:al.slice(0, 12).map(a => ({gravidade:SEV[a.sev], titulo:a.t, detalhe:a.m.replace(/<[^>]+>/g, "")})), minhas_pendencias:myPending().map(x => ({acao:x.a, numero:x.p.numero, plano_id:x.p.id}))};
 }
-const ACT_TYPES = ["abrir_tela","abrir_plano","abrir_material","criar_plano","determinar","determinar_ajustar","indeferir","assinar","formalizar","iniciar_separacao","conferir","registrar_entrega","registrar_entrada"];
+const ACT_TYPES = ["abrir_tela","abrir_plano","abrir_material","criar_plano","determinar","determinar_ajustar","propor","indeferir","assinar","formalizar","iniciar_separacao","conferir","registrar_entrega","registrar_entrada"];
 function actionAllowed(a) {
   const p = a.plano_id ? S.plans[a.plano_id] : null;
   switch (a.tipo) {
@@ -3449,7 +3527,9 @@ function actionAllowed(a) {
     case "criar_plano": return can.createPlan();
     case "assinar": return !!p && p.status === "AUTORIZACAO" && can.sign(p);
     case "indeferir": return !!p && p.status === "AUTORIZACAO" && can.sign(p);
-    case "determinar": case "determinar_ajustar": return canDeterminar() && !!a.det;
+    case "determinar": return canDeterminar() && !!a.det;
+    case "determinar_ajustar": return (canDeterminar() || canPropor()) && !!a.det;
+    case "propor": return canPropor() && !!a.det;
     case "formalizar": return !!p && p.status === "INSTRUCAO" && can.formalize();
     case "iniciar_separacao": return !!p && p.status === "AUTORIZADO" && can.separate();
     case "conferir": return !!p && p.status === "SEPARACAO" && can.separate();
@@ -3553,9 +3633,13 @@ function runAction(a) {
     case "criar_plano": formPlano(null, null, a.rascunho); break;
     case "assinar": go("plano-" + a.plano_id); setTimeout(() => act_sign(a.plano_id), 120); break;
     case "indeferir": go("plano-" + a.plano_id); setTimeout(() => act_deny(a.plano_id), 120); break;
-    case "determinar": detDo("registrar", {p_dados:a.det}, null).then(r => { if (!r) return; const pl = r.plano_id ? S.plans[r.plano_id] : null;
-      const aviso = r.demo ? "Na demonstração, o e-mail não é enviado." : r.notificados ? `${plural(r.notificados, "servidor da Formalização foi avisado", "servidores da Formalização foram avisados")} por e-mail.` : r.formalizadores ? "O envio de e-mails ainda não está ligado: a Formalização vê o plano na lista de pendências." : "Atenção: nenhum servidor tem o perfil Formalização aprovado.";
-      AS.msgs.push({role:"assistant", text:`Pronto. **${esc(r.plano || "")}** iniciado pela sua decisão (${esc(r.determinacao || "")}): ${a.det.itens.map(i => `${fmtN(i.quantidade)} × ${esc((S.items[i.material_id] || {}).descricao || "")}`).join("; ")} para **${esc(a.det.unidade)}**. O plano está em instrução documental. ${aviso}`, actions:pl ? [{tipo:"abrir_plano", plano_id:pl.id, rotulo:"Abrir " + pl.numero}] : [], used:[]}); logAssist({tipo:"resposta", texto:"Determinação registrada pelo chat"}); if (AS.full) { AS.min = false; } if (!AS.open) openChat(); drawChat(); }); break;
+    case "determinar": assinarDecisao(a.det).then(r => { if (!r) return; const pl = r.plano_id ? S.plans[r.plano_id] : null;
+      const aviso = r.demo ? "Na demonstração, o e-mail não é enviado." : r.notificados ? `${plural(r.notificados, "servidor da Formalização foi avisado", "servidores da Formalização foram avisados")} por e-mail.` : "A Formalização vê o plano na lista de pendências.";
+      AS.msgs.push({role:"assistant", text:`Decisão assinada. **${esc(r.plano || "")}** iniciado (${esc(r.determinacao || "")}): ${a.det.itens.map(i => `${fmtN(i.quantidade)} × ${esc((S.items[i.material_id] || {}).descricao || "")}`).join("; ")} para **${esc(a.det.unidade)}**. Está em formalização. ${aviso}`, actions:pl ? [{tipo:"abrir_plano", plano_id:pl.id, rotulo:"Acompanhar " + pl.numero}] : [], used:[]}); logAssist({tipo:"resposta", texto:"Decisão assinada pelo chat"}); if (!AS.open) openChat(); drawChat(); });
+      break;
+    case "propor": proporDestinacao(a.det).then(r => { if (!r) return; renderShell(); render();
+      AS.msgs.push({role:"assistant", text:`Proposta **${esc(r.determinacao)}** enviada para a decisão da Reitoria e da PRA: ${a.det.itens.map(i => `${fmtN(i.quantidade)} × ${esc((S.items[i.material_id] || {}).descricao || "")}`).join("; ")} para **${esc(a.det.unidade)}**. O plano começa quando uma delas assinar.${r.demo ? " Na demonstração, o e-mail não é enviado." : ""}`, actions:[], used:[]}); logAssist({tipo:"resposta", texto:"Proposta enviada pelo chat"}); if (!AS.open) openChat(); drawChat(); });
+      break;
     case "determinar_ajustar": formDeterminacao({...a.det, unidade:a.det.unidade, unidadeCode:a.det.unidadeCode}); break;
     case "formalizar": go("plano-" + a.plano_id); setTimeout(() => act_formalize(a.plano_id), 120); break;
     case "iniciar_separacao": go("plano-" + a.plano_id); setTimeout(() => act_startSep(a.plano_id), 120); break;
@@ -3766,7 +3850,8 @@ function nluResponder(nl, msg) {
       if (T.e) linhas.push(`- Já foram entregues ${fmtN(T.e)} às unidades.`);
       if (T.d === 0 && T.g > 0) atencao.push("Todo o saldo está comprometido em planos; novos pedidos dependem de nova aquisição.");
       if (L.length === 1) act({tipo:"abrir_material", material_id:L[0].id, rotulo:"Abrir o material"}); else act({tipo:"abrir_tela", tela:"reserva", busca:(E.mat ? E.mat.termo : "").toLowerCase(), rotulo:"Ver na reserva"});
-      if (T.d > 0 && can.createPlan()) { act({tipo:"criar_plano", rotulo:"Montar plano de destinação", rascunho:{unidade:"", finalidade:"", justificativa:"", itens:[{material_id:L[0].id, quantidade:Math.min(Math.max(0, st[L[0].id].disp), 10)}]}}); }
+      if (T.d > 0 && (canDeterminar() || canPropor()) && L.length === 1) msg.sug = [`Quero destinar ${L[0].descricao}`];
+      if (false) { act({tipo:"criar_plano", rotulo:"Montar plano de destinação", rascunho:{unidade:"", finalidade:"", justificativa:"", itens:[{material_id:L[0].id, quantidade:Math.min(Math.max(0, st[L[0].id].disp), 10)}]}}); }
       return fecha();
     }
     case "est_total": case "resumo": {
@@ -3810,7 +3895,7 @@ function nluResponder(nl, msg) {
       linhas.push(lista(L, x => `- ${esc(x.i.descricao)}: ${fmtN(x.d)} disponíveis há ${fmtN(x.dias)} dias${x.v ? " · " + BRL.format(x.v) : ""}`));
       if (m6.length) atencao.push(`${fmtN(m6.reduce((a, x) => a + x.d, 0))} bens (${BRL.format(m6.reduce((a, x) => a + x.v, 0))}) estão parados há mais de 6 meses — risco de obsolescência e perda de garantia.`);
       sug = "oferecer esses itens às unidades e montar planos de destinação começando pelos mais antigos.";
-      if (can.createPlan()) act({tipo:"criar_plano", rotulo:"Montar plano com o item mais antigo", rascunho:{unidade:"", finalidade:"", justificativa:"Destinação de saldo parado na reserva técnica", itens:[{material_id:L[0].i.id, quantidade:Math.min(L[0].d, 10)}]}});
+      if (false) act({tipo:"criar_plano", rotulo:"Montar plano com o item mais antigo", rascunho:{unidade:"", finalidade:"", justificativa:"Destinação de saldo parado na reserva técnica", itens:[{material_id:L[0].i.id, quantidade:Math.min(L[0].d, 10)}]}});
       return fecha();
     }
     case "valor": {
@@ -3846,7 +3931,7 @@ function nluResponder(nl, msg) {
       if (at.length) linhas.push(lista(at, p => `- ${esc(p.numero)} · ${esc(ST[p.status].l)} · ${fmtN(planQtd(p))} bens · ${BRL.format(planTotal(p))}${isLate(p) ? " · **acima do prazo**" : ""}`));
       at.filter(isLate).forEach(p => atencao.push(`${esc(p.numero)} está há ${daysSince(stageEnteredAt(p))} dias em “${esc(ST[p.status].l)}” — próximo: ${esc(nextResp(p))}.`));
       at.slice(0, 2).forEach(p => act({tipo:"abrir_plano", plano_id:p.id, rotulo:"Abrir " + p.numero}));
-      if (!P.length) { linhas.length = 0; linhas.push(`Ainda não há planos nem entregas para **${esc(E.uni.name)}**.`); if (can.createPlan()) sug = "montar um plano de destinação para a unidade a partir do saldo disponível."; }
+      if (!P.length) { linhas.length = 0; linhas.push(`Ainda não há planos nem entregas para **${esc(E.uni.name)}**.`); }
       return fecha();
     }
     case "planos": {
@@ -3891,10 +3976,11 @@ function nluResponder(nl, msg) {
       return fecha();
     }
     case "pendencias": {
-      const k = tIndicadores(); const L = k.minhas_pendencias;
+      const k = tIndicadores(); const L = (canDeterminar() ? detPropostas().map(d => ({acao:"Assinar decisão (proposta)", numero:`${d.numero} · ${d.unidade}`, plano_id:null})) : []).concat(k.minhas_pendencias);
       if (!L.length) return `Você não tem pendências no perfil ${esc(ROLES[R()].label)}.`;
+      if (canDeterminar() && detPropostas().length) act({tipo:"abrir_tela", tela:"planos", rotulo:"Ver propostas"});
       linhas.push(`Você tem **${plural(L.length, "pendência", "pendências")}** no perfil ${esc(ROLES[R()].label)}:`); linhas.push(lista(L, x => `- ${esc(x.acao)}: ${esc(x.numero)}`));
-      L.slice(0, 2).forEach(x => act({tipo:"abrir_plano", plano_id:x.plano_id, rotulo:"Abrir " + x.numero}));
+      L.filter(x => x.plano_id).slice(0, 2).forEach(x => act({tipo:"abrir_plano", plano_id:x.plano_id, rotulo:"Abrir " + x.numero}));
       return fecha();
     }
     case "pode_atender": {
@@ -3902,7 +3988,7 @@ function nluResponder(nl, msg) {
       if (q && d >= q) { linhas.push(`**Sim.** Em ${esc(rotMat)} há ${fmtN(d)} disponíveis; o pedido de ${fmtN(q)} deixa ${fmtN(d - q)} na reserva.`); if (L[0] && st[L[0].id].disp >= q) linhas.push(`- Atende com: ${esc(L[0].descricao)}`); }
       else linhas.push(`**${q ? "Não totalmente" : "Disponível"}:** em ${esc(rotMat)} há ${fmtN(d)} disponíveis${q ? `, faltam ${fmtN(q - d)} para o pedido de ${fmtN(q)}` : ""}.`);
       if (q && d < q) sug = d ? `atender parcialmente com ${fmtN(d)} e registrar a demanda restante para a próxima aquisição.` : "registrar a demanda para a próxima aquisição.";
-      if (d > 0 && can.createPlan() && L[0]) act({tipo:"criar_plano", rotulo:"Montar o plano", rascunho:{unidade:E.uni ? E.uni.name : "", finalidade:"", justificativa:"", itens:[{material_id:L[0].id, quantidade:Math.min(q || 1, Math.max(0, st[L[0].id].disp))}]}});
+      if (false) act({tipo:"criar_plano", rotulo:"Montar o plano", rascunho:{unidade:E.uni ? E.uni.name : "", finalidade:"", justificativa:"", itens:[{material_id:L[0].id, quantidade:Math.min(q || 1, Math.max(0, st[L[0].id].disp))}]}});
       return fecha();
     }
     case "empenhos": {
@@ -3974,7 +4060,8 @@ function conversaNormal(n, msg) {
       const pediu = /BOM DIA/.test(n) ? "dia" : /BOA TARDE/.test(n) ? "tarde" : /BOA NOITE/.test(n) ? "noite" : "";
       const real = hora < 12 ? "dia" : hora < 18 ? "tarde" : "noite";
       const nota = pediu && pediu !== real ? ` (por aqui já é ${real === "dia" ? "manhã" : real})` : "";
-      return `${sd}${vc}!${nota} Em que posso ajudar?`; }],
+      const sdUsa = pediu ? {dia:"Bom dia", tarde:"Boa tarde", noite:"Boa noite"}[pediu] : sd;
+      return `${sdUsa}${vc}! Em que posso ajudar?`; }],
     // como vai
     [/^(TUDO BEM|TUDO BOM|TUDO CERTO|COMO VAI|COMO VOCE ESTA|COMO ESTA VOCE|COMO VC ESTA|BELEZA|TRANQUILO|COMO ANDA)\b/, () => CONV_ESCOLHE([`Tudo certo por aqui${vc}! E com você? Em que posso ajudar?`, `Tudo bem, obrigado por perguntar${vc}. O que você precisa saber da reserva?`, `Tudo ótimo${vc}. Pronto para ajudar.`])],
     [/^(E VOCE|E VC|E CONTIGO)\b/, () => "Estou bem, obrigado! Sigo à disposição para o que precisar."],
@@ -4068,7 +4155,7 @@ function localAnswerRegras(q, msg) {
   if (/^(MUITO )?(OBRIGAD\w*|VALEU|BRIGAD\w*|AGRADEC\w*|GRAT[OA]|PERFEITO|OTIMO|BELEZA|SHOW|OK|CERTO|BLZ)\b/.test(n) && n.split(" ").length <= 4) return "Por nada! Se precisar de mais alguma informação da reserva, é só perguntar.";
   if (/^(TUDO BEM|TUDO BOM|COMO VAI|COMO VOCE ESTA)\b/.test(n)) return `Tudo certo por aqui${nome ? ", " + esc(nome) : ""}. Em que posso ajudar com a reserva técnica?`;
   if (/^(AJUDA|HELP|MENU|COMANDOS|ME AJUDA|ME AJUDE|PODE ME AJUDAR|PODERIA ME AJUDAR|PRECISO DE AJUDA|PRECISO DE UMA INFORMACAO|PRECISO DE INFORMACOES|TENHO UMA DUVIDA|UMA DUVIDA|O QUE (VOCE|VC) (FAZ|SABE|PODE)|COMO (FUNCIONA|TE USAR|USAR)|QUEM (E|EH) VOCE)\b/.test(n))
-    return "Eu respondo com os dados do Destina e ofereço botões para agir. Você pode perguntar, por exemplo:\n- **Totais:** “quantos bens temos hoje?”, “valor total da reserva”\n- **Materiais:** “quantos ar-condicionados temos?”, “itens com maior estoque”\n- **Planos:** “PD 0008/2026”, “planos em andamento”, “o que aguarda a minha assinatura?”\n- **Empenhos e tombamento:** “2026NE000488”, “empenhos aguardando tombamento”, “tombamento 300120”\n- **Unidades:** “o que foi entregue para o CCS?”, “unidades que mais receberam”\n- **Ações:** “monte um plano com 20 cadeiras para a Biblioteca Central”";
+    return "Eu respondo com os dados do Destina e ofereço botões para agir. Você pode perguntar, por exemplo:\n- **Totais:** “quantos bens temos hoje?”, “valor total da reserva”\n- **Materiais:** “quantos ar-condicionados temos?”, “itens com maior estoque”\n- **Planos:** “PD 0008/2026”, “planos em andamento”, “o que aguarda a minha assinatura?”\n- **Empenhos e tombamento:** “2026NE000488”, “empenhos aguardando tombamento”, “tombamento 300120”\n- **Unidades:** “o que foi entregue para o CCS?”, “unidades que mais receberam”\n- **Ações:** “quero destinar 20 cadeiras para a Biblioteca Central” (mostro a disponibilidade e peço a assinatura da decisão)";
   // 0b) totais gerais: “quantos bens no total eu tenho hoje?”
   if (/\bQUANT|\bTOTAL\b/.test(n)) {
     const GEN = new Set("QUANTO QUANTA QUANTOS QUANTAS QUANTIDADE QUAL A O OS AS E DE DO DA DOS DAS NO NA NOS NAS EM AO AOS TOTAL GERAL TODO TODA TODOS TODAS TUDO EU NOS TENHO TEMOS TEM TER HA EXISTE EXISTEM HOJE AGORA ATUALMENTE ATUAL MOMENTO NESTE NESSE BENS BEM ITENS ITEM MATERIAIS MATERIAL PATRIMONIO PATRIMONIAIS PERMANENTES PECAS UNIDADES COISAS RESERVA TECNICA ESTOQUE ALMOXARIFADO CENTRAL DISPONIVEIS DISPONIVEL SOB GUARDA GUARDADOS CADASTRADOS REGISTRADOS NOSSO NOSSA SISTEMA DESTINA AQUI LA ESTA ESTAO QUE AINDA SALDO DIFERENTES TIPOS TIPO CATALOGO CADASTRO CADASTRADO REGISTRADO GUARDADO ARMAZENADOS POSSUO POSSUIMOS".split(" "));
@@ -4435,7 +4522,7 @@ function saudacao() { const h = new Date().getHours(); return h < 12 ? "Bom dia"
 function chatSuggestions(max = 4) {
   const s = ["Quantos ar-condicionados temos disponíveis?", "O que está parado há mais tempo na reserva?"];
   if (has("PRA","REITORIA")) { s.unshift("Destinar 20 cadeiras para o CCS"); s.unshift("Quais termos aguardam a minha assinatura?"); }
-  if (can.createPlan()) s.push("Monte um plano com 20 cadeiras para a Biblioteca Central");
+  if (canDeterminar() || canPropor()) s.push("Quero destinar 20 cadeiras para a Biblioteca Central");
   if (can.separate() || can.deliver()) s.push("O que está pronto para separar ou entregar?");
   s.push("Para onde foram as cadeiras entregues este mês?");
   s.push("Resumo da reserva", "Quais itens têm maior estoque?", "Valor total da reserva");
@@ -4576,6 +4663,9 @@ document.addEventListener("click", async e => {
     case "org-reset": { const m = openModal({title:"Restaurar a estrutura da UFPB", body:"<p>A estrutura importada será descartada e o Destina volta a usar a hierarquia SIPAC/UFPB embutida.</p>", foot:`<button class="btn" data-act="close">Voltar</button><button class="btn primary" id="go">Restaurar</button>`}); $("#go", m).onclick = async () => { if (await persistOrg(null)) { closeModal(); toast("Estrutura padrão restaurada."); render(); } }; break; }
     case "layout-conversa": setLayout("conversa"); break;
     case "det-nova": formDeterminacao(); break;
+    case "det-assinar": { const d = S.determ[id]; if (d) assinarDecisao({unidade:d.unidade, unidadeCode:d.unidadeCode, itens:d.itens, observacao:d.observacao}, {proposta:d}).then(r => { if (r && r.plano_id) location.hash = "plano-" + r.plano_id; }); break; }
+    case "det-recusar": case "det-retirar": { const d = S.determ[id]; const rec = a === "det-recusar"; const m = openModal({title:(rec ? "Recusar a proposta " : "Retirar a proposta ") + esc(d.numero) + "?", body:`<div class="field"><label>Motivo${rec ? "" : ' <span class="muted">(opcional)</span>'}</label><input class="inp" id="rp-m"></div>`, foot:`<button class="btn" data-act="close">Voltar</button><button class="btn danger" id="rp-go">${rec ? "Recusar" : "Retirar"}</button>`});
+      $("#rp-go", m).onclick = async () => { const r = await detDo("recusar", {p_id:id, p_motivo:$("#rp-m", m).value.trim()}, rec ? "Proposta recusada. Quem propôs foi avisado." : "Proposta retirada."); if (r) closeModal(); }; break; }
     case "det-plano": detMontarPlano(id); break;
     case "det-cancelar": { const d = S.determ[id]; const m = openModal({title:"Cancelar a determinação " + esc(d.numero) + "?", body:`<div class="field"><label>Motivo <span class="muted">(opcional)</span></label><input class="inp" id="dc-m"></div>`, foot:`<button class="btn" data-act="close">Voltar</button><button class="btn danger" id="dc-go">Cancelar determinação</button>`}); $("#dc-go", m).onclick = async () => { if (await detDo("cancelar", {p_id:id, p_motivo:$("#dc-m", m).value.trim()}, "Determinação cancelada.")) closeModal(); }; break; }
     case "emp-novo": closeModal(); formEmpenho(); break;
