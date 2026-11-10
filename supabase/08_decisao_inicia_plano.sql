@@ -35,7 +35,7 @@ begin
   insert into public.planos (numero, unidade, unidade_code, orgao_code, finalidade, justificativa, demanda, criado_por)
   values (v_pnum, trim(p_dados->>'unidade'), nullif(p_dados->>'unidadeCode', ''), nullif(p_dados->>'orgaoCode', ''),
           left('Determinação ' || v_num, 70),
-          'Destinação determinada pela ' || v_cargo || ' (' || v_num || ', ' || to_char(now() at time zone 'America/Fortaleza', 'DD/MM/YYYY') || ').' || case when coalesce(p_dados->>'observacao', '') <> '' then ' ' || (p_dados->>'observacao') else '' end,
+          'Destinação determinada por decisão — ' || v_cargo || ' (' || v_num || ', ' || to_char(now() at time zone 'America/Fortaleza', 'DD/MM/YYYY') || ').' || case when coalesce(p_dados->>'observacao', '') <> '' then ' ' || (p_dados->>'observacao') else '' end,
           v_num, auth.uid())
   returning id into v_plano;
   insert into public.plano_etapas (plano_id, status) values (v_plano, 'RASCUNHO');
@@ -43,7 +43,7 @@ begin
     insert into public.plano_itens (plano_id, material_id, qtd, vu, codigo, descricao)
     select v_plano, m.id, (it->>'quantidade')::int, public.valor_medio(m.id), m.codigo, m.descricao from public.materiais m where m.id = (it->>'material_id')::uuid;
   end loop;
-  perform public._evento(v_plano, p_papel, 'criacao', 'Plano iniciado pela decisão da ' || v_cargo || ' (' || v_num || ')' || case when p_dados->>'origem' = 'chat' then ' pelo assistente' else '' end);
+  perform public._evento(v_plano, p_papel, 'criacao', 'Plano iniciado por decisão — ' || v_cargo || ' (' || v_num || ')' || case when p_dados->>'origem' = 'chat' then ' pelo assistente' else '' end);
   perform public._validar_saldo(v_plano);
   perform public._etapa(v_plano, 'INSTRUCAO');
   perform public._evento(v_plano, p_papel, 'envio', 'Enviado para instrução documental (Formalização)');
@@ -55,7 +55,7 @@ begin
            where p.aprovado and 'FORMALIZACAO' = any(p.papeis) and u.email is not null loop
     if public._enviar_email(f.email, f.nome, 'Nova destinação para formalizar · ' || v_pnum,
          public._email_html('Nova destinação para formalizar',
-           '<p>A <b>' || v_cargo || '</b> determinou a destinação abaixo para <b>' || trim(p_dados->>'unidade') || '</b>. O plano <b>' || v_pnum || '</b> já está em instrução documental e aguarda a formalização (processo SIPAC e documentos).</p><ul>' || v_resumo || '</ul>'
+           '<p>Por decisão de <b>' || v_cargo || '</b>, foi determinada a destinação abaixo para <b>' || trim(p_dados->>'unidade') || '</b>. O plano <b>' || v_pnum || '</b> já está em instrução documental e aguarda a formalização (processo SIPAC e documentos).</p><ul>' || v_resumo || '</ul>'
            || case when coalesce(p_dados->>'observacao', '') <> '' then '<p><i>' || (p_dados->>'observacao') || '</i></p>' else '' end,
            'Abrir o plano ' || v_pnum, v_link), 'nova_destinacao', v_plano) then v_notif := v_notif + 1; end if;
   end loop;
