@@ -3362,12 +3362,14 @@ function nluMaterial(n, excl) {
   const skip = new Set([...NLU_STOP, "QUANTOS","QUANTAS","QUANTO","QUANTA","QUANTIDADE","TOTAL","BENS","BEM","ITENS","ITEM","MATERIAIS","MATERIAL","RESERVA","TECNICA","DISPONIVEL","DISPONIVEIS","ENTREGUE","ENTREGUES","ENTREGAMOS","FORAM","FOI","VALOR","PLANO","PLANOS","UNIDADE","UNIDADES","HOJE","AGORA","TEMOS","TENHO","HA","EXISTE","SALDO","ESTOQUE","AINDA","DA","SITUACAO","INFORMACOES","ONDE","LOCALIZACAO","SOBRANDO","CHEGOU","RECEBEMOS","RECEBEU","QUEM","PARADO","ATENDER","CONSIGO","POSSIVEL","DESTINAR","DAR","ENTREGAR","MANDAR","PEDIDO","DEU","FALA","FALE","SOBRE"]);
   const cont = ws.filter(w => !skip.has(w) && !/^\d+$/.test(w));
   for (let L = Math.min(4, cont.length); L >= 1; L--) for (let i = 0; i + L <= cont.length; i++) {
-    const ph = cont.slice(i, i + L).map(w => NLU_SIN[w] || w).join(" ");
+    const ph0 = cont.slice(i, i + L).map(w => NLU_SIN[w] || w).join(" ");
+    const a0 = n.indexOf(cont[i]), lw = cont[i + L - 1], b0 = n.indexOf(lw, a0); const comStop = L > 1 && a0 >= 0 && b0 >= a0 ? n.slice(a0, b0 + lw.length) : "";
+    const ph = comStop && comStop.split(" ").length <= L + 2 && Object.values(S.items).some(it => matchText(it.descricao, comStop)) ? comStop : ph0;
     if (ph.length < 3) continue;
     const cat = CATS.find(c => normName(c) === ph || normName(c).startsWith(ph) && ph.length >= 5);
     if (cat && L === 1) return {cat, txt:cont.slice(i, i + L).join(" ")};
     const its = Object.values(S.items).filter(it => matchText(it.descricao + " " + (it.marca || "") + " " + (it.modelo || ""), ph));
-    if (its.length) { const resto = [...cont.slice(0, i), ...cont.slice(i + L)].filter(w => w.length > 2); return {its, txt:cont.slice(i, i + L).join(" "), termo:ph, resto, frase:(() => { const a = n.indexOf(cont[0]), l = cont[cont.length - 1], b = n.lastIndexOf(l); return a >= 0 && b >= a ? n.slice(a, b + l.length) : cont.join(" "); })()}; }
+    if (its.length) { const resto = [...cont.slice(0, i), ...cont.slice(i + L)].filter(w => w.length > 2); return {its, txt:ph === comStop ? comStop : cont.slice(i, i + L).join(" "), termo:ph, resto, frase:(() => { const a = n.indexOf(cont[0]), l = cont[cont.length - 1], b = n.lastIndexOf(l); return a >= 0 && b >= a ? n.slice(a, b + l.length) : cont.join(" "); })()}; }
   }
   return null;
 }
@@ -3387,6 +3389,7 @@ function nluEntender(q) {
   const uni = nluUnidade(n, q); if (uni) { ents.uni = uni.u; mk = mk.replace(new RegExp("\\b" + uni.txt + "\\b"), " <UNI> "); }
   const excl = new Set([...(uni ? uni.txt.split(" ") : []), ...(per ? (n.match(per.re) || [""])[0].split(" ") : [])]);
   const mat = nluMaterial(n, excl);
+  if (mat) { const orig = {}; String(q).split(/[^\p{L}\p{N}-]+/u).forEach(w => { if (w) orig[normName(w)] = w; }); mat.orig = mat.txt.split(" ").map(w => orig[w] || w.toLowerCase()).join(" "); }
   if (mat && mat.cat) { ents.cat = mat.cat; mk = mk.replace(new RegExp("\\b" + mat.txt + "\\b"), " <CAT> "); }
   else if (mat) { ents.mat = mat; mk = mk.replace(new RegExp("\\b" + mat.txt + "\\b"), " <MAT> "); }
   if ((m = n.match(/\b(\d{1,5})\b/)) && !ents.tomb && !(ents.plano && ents.plano.startsWith(m[1]))) { const v = +m[1]; if (v > 0 && v < 100000 && !/20\d{2}/.test(m[1])) { ents.qtd = v; mk = mk.replace(new RegExp("\\b" + m[1] + "\\b"), " <QTD> "); } }
@@ -3427,7 +3430,7 @@ function nluResponder(nl, msg) {
   const uNome = u => uSigla(u) ? `${uSigla(u)}` : u.name;
   const entregas = () => Object.values(S.plans).filter(p => p.status === "ENTREGUE" && p.entrega && (!E.per || p.entrega.data >= E.per.de && p.entrega.data < E.per.ate) && (!E.uni || naUni(p, E.uni)));
   const matIds = E.mat ? new Set(E.mat.its.map(i => i.id)) : E.cat ? new Set(its.filter(i => i.categoria === E.cat).map(i => i.id)) : null;
-  const rotMat = E.mat ? E.mat.txt.toLowerCase() : E.cat ? E.cat.toLowerCase() : "";
+  const rotMat = E.mat ? (E.mat.orig || E.mat.txt).toLowerCase() : E.cat ? E.cat.toLowerCase() : "";
   switch (nl.intent) {
     case "est_material": case "est_categoria": {
       if (!matIds) return nluResponder({...nl, intent:"est_total"}, msg);
