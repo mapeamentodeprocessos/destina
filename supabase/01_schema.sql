@@ -56,8 +56,8 @@ insert into public.config (id, dados) values (1, jsonb_build_object(
   'instituicao', 'Universidade Federal da Paraíba', 'sigla', 'UFPB',
   'orgao', 'Pró-Reitoria de Administração — Divisão de Patrimônio',
   'signatarios', jsonb_build_object(
-     'PRA', jsonb_build_object('nome', 'Nome do(a) Pró-Reitor(a)', 'cargo', 'Pró-Reitor(a) de Administração'),
-     'REITORIA', jsonb_build_object('nome', 'Nome do(a) Reitor(a)', 'cargo', 'Reitor(a)')),
+     'PRA', jsonb_build_object('nome', 'George Beltrão', 'cargo', 'Pró-Reitor de Administração'),
+     'REITORIA', jsonb_build_object('nome', 'Terezinha Domiciano', 'cargo', 'Reitora')),
   'limiteAlcada', 50000, 'exigirAmbos', false, 'sequencial', true,
   'diasParado', 180, 'diasGarantia', 90,
   'sla', jsonb_build_object('RASCUNHO',5,'INSTRUCAO',5,'AUTORIZACAO',7,'AUTORIZADO',5,'SEPARACAO',3,'PRONTO',5),
