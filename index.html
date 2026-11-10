@@ -2627,11 +2627,14 @@ function chatDecisao(q, msg) {
   let nl; try { nl = nluEntender(q); } catch (e) { return null; }
   const n = nl.n || "", E = nl.ents, act = a => { if (actionAllowed(a)) msg.actions.push(a); };
   // continuação de uma determinação incompleta ("para o CCS", "30")
-  if (AS.slot && n.split(" ").length <= 6 && (E.uni || E.qtd || E.mat) && !/^(AUTORIZ|ASSIN|INDEFER)/.test(n)) {
-    const s = AS.slot; if (E.uni) s.uni = E.uni; if (E.qtd) s.qtd = E.qtd; if (E.mat) s.mat = E.mat; return chatDeterminarMontar(s, msg);
+  if (AS.slot && n.split(" ").length <= 12 && (E.uni || E.qtd || E.mat) && !/^(AUTORIZ|ASSIN|INDEFER)/.test(n)) {
+    const s = AS.slot; if (E.uni) s.uni = E.uni; if (E.qtd) s.qtd = E.qtd;
+    if (E.mat) { const prev = s.mat ? new Set(s.mat.its.map(i => i.id)) : null; const exato = Object.values(S.items).find(i => normName(i.descricao) === normName(q.trim())); s.mat = exato ? {...E.mat, its:[exato]} : prev ? {...E.mat, its:E.mat.its.filter(i => prev.has(i.id))} : E.mat; if (!s.mat.its.length) s.mat = E.mat; if (s.mat.its.length === 1) s.escolhido = true; }
+    return chatDeterminarMontar(s, msg);
   }
-  const verboDest = /^(QUERO |GOSTARIA DE |POR FAVOR |PODE |PODERIA |VAMOS )?(DESTINAR|DESTINE|DESTINA|DETERMINO|DETERMINE|DETERMINAR|MANDE|MANDAR|ENVIE|ENVIAR|ENCAMINHE|ENCAMINHAR|LIBERE|LIBERAR|REPASSE|REPASSAR|DOE|DOAR|ENTREGUE|ENTREGAR)\b/;
+  const verboDest = /^(QUERO |GOSTARIA DE |POR FAVOR |PODE |PODERIA |VAMOS |PRECISO |PRECISAMOS |DEVEMOS )?(DESTINAR|DESTINE|DESTINA|DETERMINO|DETERMINE|DETERMINAR|MANDE|MANDAR|ENVIE|ENVIAR|ENCAMINHE|ENCAMINHAR|LIBERE|LIBERAR|REPASSE|REPASSAR|DOE|DOAR|ENTREGUE|ENTREGAR)\b|\b(FAZER|FACA|REALIZAR|ABRIR|INICIAR) (UMA |A )?DESTINACAO\b|\bQUERO (UMA |FAZER (UMA )?)?DESTINACAO\b|\bDESTINACAO DE\b/;
   if (verboDest.test(n) && (E.mat || E.cat)) {
+    if (!E.qtd) { const W = {UM:1, UMA:1, DOIS:2, DUAS:2, TRES:3, QUATRO:4, CINCO:5, SEIS:6, SETE:7, OITO:8, NOVE:9, DEZ:10, VINTE:20, TRINTA:30, QUARENTA:40, CINQUENTA:50, CEM:100}; const w = n.split(" ").find(x => W[x] && n.indexOf(x) < n.indexOf((E.mat ? E.mat.txt : E.cat.toUpperCase()).split(" ")[0])); if (w) E.qtd = W[w]; }
     if (canDeterminar() || can.createPlan()) return chatDeterminarMontar({mat:E.mat, cat:E.cat, qtd:E.qtd, uni:E.uni}, msg);
     return "A destinação é determinada pela Reitoria ou pela Pró-Reitoria de Administração. Pelo seu perfil, posso mostrar o saldo e os planos.";
   }
@@ -2663,7 +2666,12 @@ function chatDecisao(q, msg) {
 }
 function chatDeterminarMontar(s, msg) {
   const st = computeStock(); const act = a => { if (actionAllowed(a)) msg.actions.push(a); };
-  const cands = s.mat ? s.mat.its : s.cat ? Object.values(S.items).filter(i => i.categoria === s.cat) : [];
+  const cands = (s.mat ? s.mat.its : s.cat ? Object.values(S.items).filter(i => i.categoria === s.cat) : []).filter(i => st[i.id] && st[i.id].disp > 0);
+  if (cands.length > 1 && !s.escolhido) {
+    s.escolhido = false; AS.slot = s;
+    msg.sug = cands.slice(0, 4).map(i => i.descricao);
+    return `Temos ${cands.length} opções. Qual delas?\n` + cands.slice(0, 4).map(i => `- ${esc(i.descricao)}: ${fmtN(st[i.id].disp)} disponíveis`).join("\n");
+  }
   const it = cands.slice().sort((a, b) => st[b.id].disp - st[a.id].disp)[0];
   if (!it) { AS.slot = null; return "Não encontrei esse bem na reserva técnica."; }
   const disp = Math.max(0, st[it.id].disp);
@@ -3446,7 +3454,7 @@ function nluPrep() {
   CATS.forEach(add); ORG.list.forEach(u => add(u.name)); APELIDOS.flat().forEach(add);
   Object.values(NLU_MODELOS).flat().forEach(add); Object.keys(NLU_SIN).forEach(add); Object.values(NLU_SIN).forEach(add); NLU_MESES.forEach(add);
   "HOJE ONTEM SEMANA PASSADA PASSADO ULTIMOS ULTIMAS DIAS MESES ANO ENTREGUE ENTREGUES RESERVA DISPONIVEL DISPONIVEIS PLANO PLANOS EMPENHO EMPENHOS TOMBAMENTO TOMBAMENTOS ASSINATURA ASSINAR".split(" ").forEach(w => V.add(w));
-  "BOM BOA DIA DIAS NOITE NOITES TARDE TARDES OLA OBRIGADO OBRIGADA VALEU AJUDA FAVOR QUERO QUERIA GOSTARIA SABER PRECISO PODE PODERIA MOSTRA MOSTRE DIGA FALA FALE ONDE QUANDO COMO QUANTO QUANTA QUANTOS QUANTAS TUDO NADA ALGO ALGUM ALGUMA COISA COISAS GENTE PESSOAL AGORA SEMPRE NUNCA ONTEM AMANHA CERTO ERRADO MELHOR PIOR MAIOR MENOR PRIMEIRO ULTIMO NOVO NOVOS NOVA NOVAS TEMPO HORA HORAS DESDE ENTRE SOBRE PERGUNTA RESPOSTA OBRIGADA".split(" ").forEach(w => V.add(w));
+  "PERFEITO PERFEITA DEPOIS DEIXE DEIXA DEIXAR MAS PORQUE PORQUE ENTAO TAMBEM ISSO ISTO AQUILO ESSE ESSA ESTE ESTA DESCONSIDERE DESCONSIDERAR IGNORE ESQUECE ESQUECA CANCELA CANCELAR CERTO CERTA ERRADO CORRETO PRONTO PRONTA AGORA LOGO CEDO TARDE SEMPRE NUNCA TALVEZ CLARO OTIMO OTIMA LEGAL BACANA BELEZA VALEU FAZER FACA FAZENDO FEITO QUERO QUERIA QUEREMOS PRECISO PRECISAMOS PODEMOS DEVEMOS VAMOS VOU VAI FICA FICAR OLHAR VEJO VER VERIFICAR CONFERIR RESOLVER RESOLVO AJUDAR ATENDER PEDIDO DEMANDA UNIDADE ENVIAR MANDAR DESTINAR DESTINACAO PRIMEIRO PRIMEIRA SEGUNDO OUTRO OUTRA OUTROS MESMO MESMA MUITO POUCO BASTANTE NENHUM NENHUMA TODO TODA TODOS TODAS CADA QUAL QUAIS QUANDO ONDE COMO SOBRE ENTRE ATE DESDE BOM BOA DIA DIAS NOITE NOITES TARDE TARDES OLA OBRIGADO OBRIGADA VALEU AJUDA FAVOR QUERO QUERIA GOSTARIA SABER PRECISO PODE PODERIA MOSTRA MOSTRE DIGA FALA FALE ONDE QUANDO COMO QUANTO QUANTA QUANTOS QUANTAS TUDO NADA ALGO ALGUM ALGUMA COISA COISAS GENTE PESSOAL AGORA SEMPRE NUNCA ONTEM AMANHA CERTO ERRADO MELHOR PIOR MAIOR MENOR PRIMEIRO ULTIMO NOVO NOVOS NOVA NOVAS TEMPO HORA HORAS DESDE ENTRE SOBRE PERGUNTA RESPOSTA OBRIGADA".split(" ").forEach(w => V.add(w));
   NLU.vocab = [...V].filter(w => w.length > 4 || !NLU_SIN[w]);
   NLU.siglas = new Map(); ORG.list.forEach(u => { const s = normName(uSigla(u)).split("/")[0]; if (s && s.length >= 2 && (!NLU.siglas.has(s) || u.path.length < NLU.siglas.get(s).path.length)) NLU.siglas.set(s, u); });
   // modelos já normalizados + idf das palavras
@@ -3799,7 +3807,7 @@ function conversaNormal(n, msg) {
       const pediu = /BOM DIA/.test(n) ? "dia" : /BOA TARDE/.test(n) ? "tarde" : /BOA NOITE/.test(n) ? "noite" : "";
       const real = hora < 12 ? "dia" : hora < 18 ? "tarde" : "noite";
       const nota = pediu && pediu !== real ? ` (por aqui já é ${real === "dia" ? "manhã" : real})` : "";
-      return `${sd}${vc}!${nota} Em que posso ajudar?${pend()}`; }],
+      return `${sd}${vc}!${nota} Em que posso ajudar?`; }],
     // como vai
     [/^(TUDO BEM|TUDO BOM|TUDO CERTO|COMO VAI|COMO VOCE ESTA|COMO ESTA VOCE|COMO VC ESTA|BELEZA|TRANQUILO|COMO ANDA)\b/, () => CONV_ESCOLHE([`Tudo certo por aqui${vc}! E com você? Em que posso ajudar?`, `Tudo bem, obrigado por perguntar${vc}. O que você precisa saber da reserva?`, `Tudo ótimo${vc}. Pronto para ajudar.`])],
     [/^(E VOCE|E VC|E CONTIGO)\b/, () => "Estou bem, obrigado! Sigo à disposição para o que precisar."],
@@ -3829,6 +3837,9 @@ function conversaNormal(n, msg) {
     // fora do assunto
     [/\b(PREVISAO DO TEMPO|VAI CHOVER|CLIMA HOJE|FUTEBOL|JOGO DE HOJE|RECEITA DE|PIADA|CONTA UMA PIADA|CAPITAL DA|QUEM GANHOU|NOTICIAS?)\b/, () => "Isso foge do que eu sei: só tenho os dados do Destina (reserva técnica, planos, entregas e empenhos). Posso ajudar com algum desses?"],
   ];
+  const curta = n.split(" ").length <= 9;
+  if (curta && /\b(DEIX\w* (ISSO |ISTO |ESSE |ESSA )?(PRA|PARA|P) (DEPOIS|MAIS TARDE|AMANHA|OUTRA HORA|OUTRO DIA|SEGUNDA)|DEPOIS (EU )?(VEJO|RESOLVO|FACO|OLHO)|VEJO DEPOIS|FICA (PRA|PARA) DEPOIS|AGORA NAO|NAO AGORA|MAIS TARDE (EU )?(VEJO|RESOLVO)|NAO E PRIORIDADE|NAO E URGENTE)\b/.test(n)) { AS.slot = null; return CONV_ESCOLHE(["Tudo bem, fica para depois. Em que mais posso ajudar?", "Combinado, deixamos para depois. Precisa de mais alguma coisa?"]); }
+  if (curta && /\b(DESCONSIDER\w*|IGNOR\w*|ESQUEC\w*|DEIXA (PRA|PARA) LA|DEIXA ISSO|CANCELA ISSO|NAO (E|ERA) ISSO|NAO QUERO (ISSO|ESSE|ESSA)|NAO PRECISA|NAO PRECISO (DISSO|DESSE|DESSA))\b/.test(n)) { AS.slot = null; AS.ctx = null; return CONV_ESCOLHE(["Certo, desconsiderei. O que você precisa?", "Tudo bem, deixei de lado. Como posso ajudar?"]); }
   const PREFIXO = new Set([0, 1, 5, 6, 7, 8]); // cumprimentos e cortesias que podem vir antes de uma pergunta
   for (const [k, [re, f]] of R.entries()) if (re.test(n)) {
     if (!PREFIXO.has(k)) return f();
