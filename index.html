@@ -600,7 +600,7 @@ const CATS = ["Informática","Mobiliário","Climatização","Audiovisual","Labor
 const UNIDADES_PADRAO = ["Reitoria","Pró-Reitoria de Administração (PRA)","Pró-Reitoria de Graduação (PRG)","Pró-Reitoria de Pós-Graduação (PRPG)","Superintendência de Tecnologia da Informação (STI)","Prefeitura Universitária","Biblioteca Central","Centro de Ciências Exatas e da Natureza (CCEN)","Centro de Ciências Humanas, Letras e Artes (CCHLA)","Centro de Ciências da Saúde (CCS)","Centro de Tecnologia (CT)","Centro de Ciências Sociais Aplicadas (CCSA)","Centro de Educação (CE)","Centro de Ciências Jurídicas (CCJ)","Centro de Ciências Médicas (CCM)","Centro de Biotecnologia (CBIOTEC)","Centro de Informática (CI)","Centro de Energias Alternativas e Renováveis (CEAR)","Centro de Comunicação, Turismo e Artes (CCTA)","Centro de Tecnologia e Desenvolvimento Regional (CTDR)","Centro de Ciências Agrárias (CCA) — Areia","Centro de Ciências Aplicadas e Educação (CCAE) — Rio Tinto/Mamanguape","Centro de Ciências Humanas, Sociais e Agrárias (CCHSA) — Bananeiras"];
 const CFG_DEFAULT = () => ({
   instituicao:"Universidade Federal da Paraíba", sigla:"UFPB", orgao:"Pró-Reitoria de Administração — Divisão de Patrimônio",
-  signatarios:{PRA:{nome:"Nome do(a) Pró-Reitor(a)", cargo:"Pró-Reitor(a) de Administração"}, REITORIA:{nome:"Nome do(a) Reitor(a)", cargo:"Reitor(a)"}},
+  signatarios:{PRA:{nome:"George Beltrão", cargo:"Pró-Reitor de Administração"}, REITORIA:{nome:"Terezinha Domiciano", cargo:"Reitora"}},
   limiteAlcada:50000, exigirAmbos:false, sequencial:true, diasParado:180, diasGarantia:90,
   sla:{RASCUNHO:5, INSTRUCAO:5, AUTORIZACAO:7, AUTORIZADO:5, SEPARACAO:3, PRONTO:5},
   fundamentacao:"Instrução Normativa SEDAP nº 205/1988, que disciplina a racionalização e a distribuição de material na Administração Pública Federal, e normas internas de gestão patrimonial da UFPB.",
@@ -622,8 +622,8 @@ const PERSONAS = [
   {id:"u_pat", name:"Dennis Freitas", cargo:"Diretor da Divisão de Patrimônio", roles:["PATRIMONIO"]},
   {id:"u_alm", name:"Carlos Nóbrega", cargo:"Chefe do Almoxarifado Central", roles:["ALMOXARIFADO"]},
   {id:"u_form", name:"Juliana Medeiros", cargo:"Assessoria de formalização — PRA", roles:["FORMALIZACAO"]},
-  {id:"u_pra", name:"Prof. Ricardo Albuquerque", cargo:"Pró-Reitor de Administração", roles:["PRA"]},
-  {id:"u_reit", name:"Prof.ª Helena Cavalcanti", cargo:"Reitora", roles:["REITORIA"]},
+  {id:"u_pra", name:"George Beltrão", cargo:"Pró-Reitor de Administração", roles:["PRA"]},
+  {id:"u_reit", name:"Terezinha Domiciano", cargo:"Reitora", roles:["REITORIA"]},
   {id:"u_adm", name:"Gestão do Sistema", cargo:"Administrador do Destina", roles:["ADMIN"]},
   {id:"u_cons", name:"Auditoria Interna", cargo:"Consulta e auditoria", roles:["CONSULTA"]}
 ];
@@ -1126,7 +1126,7 @@ async function boot() {
     S.determ = saved.determ || {};
   } else {
     S.cfg = CFG_DEFAULT();
-    S.cfg.signatarios = {PRA:{nome:"Prof. Ricardo Albuquerque", cargo:"Pró-Reitor de Administração"}, REITORIA:{nome:"Prof.ª Helena Cavalcanti", cargo:"Reitora"}};
+    S.cfg.signatarios = {PRA:{nome:"George Beltrão", cargo:"Pró-Reitor de Administração"}, REITORIA:{nome:"Terezinha Domiciano", cargo:"Reitora"}};
     await seedDemo();
   }
   const persona = lsGet("destina_persona") || "u_pat";
@@ -4430,7 +4430,7 @@ document.addEventListener("click", async e => {
     case "ext-add": { const v = ($("#ext-mail") || {}).value || ""; if (await sbDo("autorizar_email", {p_email:v}, "E-mail autorizado a se cadastrar.")) sbCarregarExternos(); break; }
     case "ext-del": { if (await sbDo("remover_email", {p_email:id}, "Autorização removida. A conta já criada continua valendo.")) sbCarregarExternos(); break; }
     case "backup": sbBackup(); break;
-    case "reset-demo": { const m = openModal({title:"Restaurar demonstração", body:"<p>Tudo o que foi feito na demonstração neste navegador será substituído pelo cenário de exemplo.</p>", foot:`<button class="btn" data-act="close">Voltar</button><button class="btn danger" id="go">Restaurar</button>`}); $("#go", m).onclick = async () => { S.cfg = CFG_DEFAULT(); S.cfg.signatarios = {PRA:{nome:"Prof. Ricardo Albuquerque", cargo:"Pró-Reitor de Administração"}, REITORIA:{nome:"Prof.ª Helena Cavalcanti", cargo:"Reitora"}}; await seedDemo(); closeModal(); renderShell(); render(); toast("Demonstração restaurada."); }; break; }
+    case "reset-demo": { const m = openModal({title:"Restaurar demonstração", body:"<p>Tudo o que foi feito na demonstração neste navegador será substituído pelo cenário de exemplo.</p>", foot:`<button class="btn" data-act="close">Voltar</button><button class="btn danger" id="go">Restaurar</button>`}); $("#go", m).onclick = async () => { S.cfg = CFG_DEFAULT(); S.cfg.signatarios = {PRA:{nome:"George Beltrão", cargo:"Pró-Reitor de Administração"}, REITORIA:{nome:"Terezinha Domiciano", cargo:"Reitora"}}; await seedDemo(); closeModal(); renderShell(); render(); toast("Demonstração restaurada."); }; break; }
     case "rm-user": { const p = clone(S.perfis); delete p[id]; await persistPerfis(p); render(); break; }
   }
 });
