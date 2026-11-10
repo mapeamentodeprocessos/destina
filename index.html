@@ -190,6 +190,61 @@ textarea.inp{min-height:84px;resize:vertical}
 .mrail .s.cur .d{border-color:var(--brand-2);background:var(--brand-soft);box-shadow:0 0 0 4px color-mix(in srgb,var(--brand-2) 20%,transparent)}
 .mrail .s.stop .d{background:var(--crit);border-color:var(--crit)}
 .mrail svg{width:12px;height:12px;color:#fff}
+/* rastreio no estilo "acompanhe seu pedido" */
+.trk{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow);overflow:hidden;margin-bottom:16px}
+.trk-h{display:flex;gap:18px;align-items:stretch;justify-content:space-between;padding:18px 20px 6px;flex-wrap:wrap}
+.trk-h .k{font-size:12.5px;color:var(--muted);font-weight:600}
+.trk-h h2{font-size:22px;line-height:1.2;margin:2px 0 4px;color:var(--ink)}
+.trk-h p{margin:0;color:var(--ink-2);font-size:14px;max-width:60ch}
+.trk.ok .trk-h h2{color:var(--good-ink)} .trk.bad .trk-h h2{color:var(--crit-ink)} .trk.late .trk-h h2{color:var(--warn-ink)}
+.trk-eta{background:var(--brand-soft);border-radius:var(--r);padding:10px 14px;min-width:190px;display:flex;flex-direction:column;justify-content:center}
+.trk-eta span{font-size:12px;color:var(--ink-2);font-weight:600}
+.trk-eta b{font-size:18px;color:var(--brand);line-height:1.25}
+.trk-eta small{font-size:12px;color:var(--ink-2)}
+.trk.ok .trk-eta{background:var(--good-soft)} .trk.ok .trk-eta b{color:var(--good-ink)}
+.trk.late .trk-eta{background:var(--warn-soft)} .trk.late .trk-eta b{color:var(--warn-ink)}
+.trk.bad .trk-eta{background:var(--crit-soft)} .trk.bad .trk-eta b{color:var(--crit-ink)}
+.trk-bar{display:grid;grid-template-columns:repeat(6,1fr);padding:18px 12px 16px;overflow-x:auto}
+.trk-bar .s{position:relative;text-align:center;font-size:12px;font-weight:600;color:var(--muted);min-width:84px;padding:0 4px}
+.trk-bar .s::before{content:"";position:absolute;top:19px;right:50%;left:-50%;height:4px;background:var(--line);border-radius:2px}
+.trk-bar .s:first-child::before{display:none}
+.trk-bar .s.done::before,.trk-bar .s.cur::before{background:var(--accent)}
+.trk-bar .d{position:relative;z-index:1;width:42px;height:42px;border-radius:50%;margin:0 auto 8px;display:grid;place-items:center;background:var(--panel);border:2px solid var(--line);color:var(--muted)}
+.trk-bar .d svg{width:19px;height:19px}
+.trk-bar .s.done{color:var(--ink-2)} .trk-bar .s.done .d{background:var(--accent);border-color:var(--accent);color:#fff}
+.trk-bar .s.cur{color:var(--ink)} .trk-bar .s.cur .d{background:var(--brand);border-color:var(--brand);color:#fff;animation:trkPulse 2s ease-out infinite}
+.trk-bar .s.stop .d{background:var(--crit);border-color:var(--crit);color:#fff}
+.trk-bar .s small{display:block;font-weight:500;color:var(--muted);font-size:11px;margin-top:2px}
+@keyframes trkPulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--brand-2) 45%,transparent)}100%{box-shadow:0 0 0 12px transparent}}
+.trk-tl{border-top:1px solid var(--line-2);padding:14px 20px 16px;background:var(--panel-2)}
+.trk-tl h3{font-size:14px;margin:0 0 10px}
+.trk-ev{display:grid;grid-template-columns:92px 18px 1fr;gap:10px;position:relative;padding-bottom:14px}
+.trk-ev .t{font-size:12px;color:var(--muted);text-align:right;line-height:1.35}
+.trk-ev .t b{display:block;color:var(--ink-2);font-size:12.5px}
+.trk-ev .o{position:relative}
+.trk-ev .o::before{content:"";position:absolute;left:5px;top:4px;width:10px;height:10px;border-radius:50%;background:var(--line);border:2px solid var(--panel-2)}
+.trk-ev .o::after{content:"";position:absolute;left:9px;top:18px;bottom:-14px;width:2px;background:var(--line)}
+.trk-ev:last-child .o::after{display:none}
+.trk-ev .x{font-size:13.5px;color:var(--ink-2)} .trk-ev .x small{display:block;color:var(--muted);font-size:12px;margin-top:1px}
+.trk-ev.now .o::before{background:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)} .trk-ev.now .x{color:var(--ink);font-weight:600}
+.trk-tl details summary{cursor:pointer;color:var(--brand-2);font-weight:600;font-size:13px;margin:-2px 0 6px 120px;list-style:none}
+.trk-tl details summary::-webkit-details-marker{display:none}
+.trk-tl details[open] summary{display:none}
+/* lista "meus pedidos" */
+.ord{display:block;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:14px 16px;cursor:pointer;color:inherit;text-decoration:none}
+.ord:hover{border-color:var(--brand-2)} .ord:focus-visible{outline:2px solid var(--brand-2);outline-offset:2px}
+.ord-h{display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap;font-size:12.5px;color:var(--muted)}
+.ord-h b{color:var(--ink);font-size:14px}
+.ord-st{font-weight:700;font-size:13px}
+.ord-m{display:flex;gap:14px;align-items:center;margin-top:10px}
+.ord-ic{width:46px;height:46px;flex:none;border-radius:12px;background:var(--brand-soft);color:var(--brand);display:grid;place-items:center}
+.ord-ic svg{width:22px;height:22px}
+.ord-m .tx{min-width:0;flex:1} .ord-m .tx b{display:block;font-size:15px;color:var(--ink)} .ord-m .tx span{font-size:13px;color:var(--ink-2)}
+.ord-p{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin:12px 0 8px}
+.ord-p i{height:6px;border-radius:3px;background:var(--line)} .ord-p i.on{background:var(--accent)} .ord-p i.cur{background:var(--brand-2)} .ord-p i.stop{background:var(--crit)}
+.ord-f{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--ink-2);flex-wrap:wrap}
+.ord-list{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(330px,1fr))}
+@media (max-width:640px){.trk-ev{grid-template-columns:70px 18px 1fr}.trk-tl details summary{margin-left:98px}.trk-h h2{font-size:19px}}
 .mrail small{display:block;font-weight:500;color:var(--muted);font-size:11px}
 
 /* charts */
@@ -566,6 +621,7 @@ const IC = {
   user:'<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
   shield:'<path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z"/>',
   box:'<path d="M21 8l-9-5-9 5v8l9 5 9-5z"/>',
+  acompanhar:'<circle cx="12" cy="10" r="3"/><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/>',
   ret:'<path d="M9 14L4 9l5-5"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/>',
   tag:'<path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8z"/><circle cx="7" cy="7" r="1.5"/>',
   copy:'<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
@@ -1187,6 +1243,7 @@ const NAV = [
   {k:"reserva", l:"Reserva técnica", roles:null},
   {k:"empenhos", l:"Empenhos e tombamento", roles:null},
   {k:"planos", l:"Planos de destinação", roles:null},
+  {k:"acompanhar", l:"Acompanhar destinações", roles:null},
   {k:"autorizacoes", l:"Autorizações", roles:["REITORIA","PRA","ADMIN","FORMALIZACAO","CONSULTA"]},
   {k:"entregas", l:"Separação e entrega", roles:["ALMOXARIFADO","PATRIMONIO","ADMIN","CONSULTA"]},
   {k:"monitoramento", l:"Monitoramento", roles:null},
@@ -1255,7 +1312,7 @@ function render() {
   if (S.mode === "oficial" && !S.role) { v.innerHTML = vSemPerfil(); return; }
   const nav = NAV.find(n => n.k === S.route);
   if (nav && nav.roles && !nav.roles.includes(R())) { S.route = "painel"; }
-  const views = {painel:vPainel, reserva:vReserva, empenhos:vEmpenhos, planos:vPlanos, plano:vPlano, autorizacoes:vAutorizacoes, entregas:vEntregas, monitoramento:vMonitoramento, documentos:vDocumentos, configuracoes:vConfig};
+  const views = {painel:vPainel, reserva:vReserva, empenhos:vEmpenhos, planos:vPlanos, acompanhar:vAcompanhar, plano:vPlano, autorizacoes:vAutorizacoes, entregas:vEntregas, monitoramento:vMonitoramento, documentos:vDocumentos, configuracoes:vConfig};
   v.innerHTML = (views[S.route] || vPainel)();
   if (S.route === "empenhos") montarEmpenhos();
   if (S.route === "configuracoes") { mountOrgBrowser(); if (S.mode === "oficial") sbCarregarExternos(); }
@@ -1788,6 +1845,91 @@ function exportCSV() {
 }
 
 // ---------- PLANOS ----------
+// ---------- rastreio do plano (estilo "acompanhe seu pedido") ----------
+const TRK = [
+  {k:"reg", l:"Registrado", ic:"plus", st:["RASCUNHO"]},
+  {k:"form", l:"Formalização", ic:"planos", st:["INSTRUCAO"]},
+  {k:"aut", l:"Autorização", ic:"shield", st:["AUTORIZACAO"]},
+  {k:"sep", l:"Separação", ic:"box", st:["AUTORIZADO","SEPARACAO"]},
+  {k:"pronto", l:"Pronto para entrega", ic:"tag", st:["PRONTO"]},
+  {k:"ent", l:"Entregue", ic:"entregas", st:["ENTREGUE"]}
+];
+const trkIdx = s => TRK.findIndex(x => x.st.includes(s));
+function planEta(p) {
+  if (!STAGES.includes(p.status) || p.status === "ENTREGUE" || p.legado) return null;
+  const sla = S.cfg.sla || {}, i = STAGES.indexOf(p.status);
+  let t = Math.max(now(), stageEnteredAt(p) + (sla[p.status] || 0) * DAY);
+  STAGES.slice(i + 1, -1).forEach(s => t += (sla[s] || 0) * DAY);
+  return t;
+}
+const fmtLongo = t => new Date(t).toLocaleDateString("pt-BR", {day:"numeric", month:"long"});
+const fmtSemana = t => new Date(t).toLocaleDateString("pt-BR", {weekday:"long"});
+function planTrkInfo(p) {
+  const stopped = ["INDEFERIDO","CANCELADO"].includes(p.status);
+  const lastStage = (p.etapas || []).filter(e => STAGES.includes(e.s)).slice(-1)[0];
+  const reached = stopped ? Math.max(0, trkIdx(lastStage ? lastStage.s : "RASCUNHO")) : trkIdx(p.status);
+  const quem = (nextSigner(p) || []).map(r => (S.cfg.signatarios[r] || {}).nome || (S.cfg.signatarios[r] || {}).cargo).join(" e ");
+  const late = isLate(p), eta = planEta(p);
+  const msg = {
+    RASCUNHO:["Plano registrado", p.devolucao ? "Voltou para ajustes antes de seguir para a formalização." : "O plano está sendo montado e seguirá para a formalização."],
+    INSTRUCAO:["Em formalização", "A Formalização está preparando o processo e o termo de autorização."],
+    AUTORIZACAO:["Aguardando autorização", quem ? `O termo aguarda a assinatura de ${quem}.` : "O termo aguarda assinatura."],
+    AUTORIZADO:["Autorizado", "Destinação autorizada. O almoxarifado vai separar os bens."],
+    SEPARACAO:["Em separação", "Os bens estão sendo separados e conferidos no almoxarifado."],
+    PRONTO:["Pronto para entrega", "Os bens estão separados e prontos. Falta registrar a entrega à unidade."],
+    ENTREGUE:["Entregue", p.entrega ? `Entregue em ${fmtD(p.entrega.data)} a ${p.entrega.recebedor}.` : "Os bens foram entregues à unidade."],
+    INDEFERIDO:["Não autorizado", p.indeferimento ? `Indeferido em ${fmtD(p.indeferimento.at)}: ${p.indeferimento.motivo || ""}` : "A destinação não foi autorizada."],
+    CANCELADO:["Cancelado", "Este plano foi cancelado e os bens voltaram ao saldo disponível."]
+  }[p.status] || [ST[p.status] ? ST[p.status].l : p.status, ""];
+  const tom = p.status === "ENTREGUE" ? "ok" : stopped ? "bad" : late ? "late" : "";
+  return {stopped, reached, late, eta, titulo:msg[0], texto:msg[1], tom};
+}
+function planTrack(p) {
+  if (p.legado) return "";
+  const I = planTrkInfo(p);
+  const bar = TRK.map((x, i) => {
+    const cls = I.stopped ? (i <= I.reached ? "done" : i === I.reached + 1 ? "stop" : "") : p.status === "ENTREGUE" || i < I.reached ? "done" : i === I.reached ? "cur" : "";
+    const e = (p.etapas || []).filter(y => x.st.includes(y.s)).slice(-1)[0];
+    const when = x.k === "reg" ? p.criadoEm : e ? e.at : null;
+    return `<div class="s ${cls}"><div class="d">${ic(cls === "stop" ? "x" : cls === "done" ? "check" : x.ic)}</div>${x.l}${when && (cls === "done" || cls === "cur") ? `<small>${fmtD(when)}</small>` : ""}</div>`;
+  }).join("");
+  const eta = p.status === "ENTREGUE" && p.entrega ? `<span>Entregue em</span><b>${fmtLongo(p.entrega.data)}</b><small>${esc(p.entrega.local || p.unidade)}</small>`
+    : I.stopped ? `<span>Situação</span><b>${esc(I.titulo)}</b><small>${fmtD((p.indeferimento || {}).at || stageEnteredAt(p))}</small>`
+    : I.eta ? `<span>${I.late ? "Atrasado · nova previsão" : "Previsão de entrega"}</span><b>até ${fmtLongo(I.eta)}</b><small>${fmtSemana(I.eta)}${I.late ? ` · ${daysSince(stageEnteredAt(p))} dias nesta etapa` : ""}</small>` : "";
+  const evs = (p.eventos || []).slice().reverse();
+  const evRow = (ev, i) => { const d = new Date(ev.at); return `<div class="trk-ev ${i === 0 ? "now" : ""}"><div class="t"><b>${d.toLocaleDateString("pt-BR", {day:"2-digit", month:"short"}).replace(".", "")}</b>${d.toLocaleTimeString("pt-BR", {hour:"2-digit", minute:"2-digit"})}</div><div class="o"></div><div class="x">${esc(ev.msg)}<small>${esc(nameOf(ev.by))}${ev.role && ROLES[ev.role] ? " · " + esc(ROLES[ev.role].label) : ""}</small></div></div>`; };
+  return `<section class="trk ${I.tom}" aria-label="Acompanhamento do plano">
+    <div class="trk-h"><div><div class="k">Destino: ${esc(p.unidade)} · ${plural(planQtd(p), "bem", "bens")}</div><h2>${esc(I.titulo)}</h2><p>${esc(I.texto)}</p></div>${eta ? `<div class="trk-eta">${eta}</div>` : ""}</div>
+    <div class="trk-bar" role="list">${bar}</div>
+    ${evs.length ? `<div class="trk-tl"><h3>Histórico</h3>${evs.slice(0, 3).map(evRow).join("")}${evs.length > 3 ? `<details><summary>Ver todo o histórico (${evs.length})</summary>${evs.slice(3).map((e, i) => evRow(e, i + 3)).join("")}</details>` : ""}</div>` : ""}
+  </section>`;
+}
+function ordCard(p) {
+  const I = planTrkInfo(p);
+  const seg = TRK.map((x, i) => `<i class="${I.stopped ? (i <= I.reached ? "on" : i === I.reached + 1 ? "stop" : "") : p.status === "ENTREGUE" || i < I.reached ? "on" : i === I.reached ? "cur" : ""}"></i>`).join("");
+  const itens = p.itens.slice(0, 2).map(li => `${fmtN(li.qtd)} × ${li.descricao}`).join(", ") + (p.itens.length > 2 ? ` e mais ${p.itens.length - 2}` : "");
+  const cor = I.tom === "ok" ? "var(--good-ink)" : I.tom === "bad" ? "var(--crit-ink)" : I.tom === "late" ? "var(--warn-ink)" : "var(--brand-2)";
+  const pe = p.status === "ENTREGUE" && p.entrega ? `Entregue em ${fmtD(p.entrega.data)}` : I.eta ? `${I.late ? "Atrasado · " : ""}Previsão: até ${fmtLongo(I.eta)}` : "";
+  return `<a class="ord" href="#plano-${p.id}" aria-label="Acompanhar ${esc(p.numero)}">
+    <div class="ord-h"><b>${esc(p.unidade)}</b><span class="ord-st" style="color:${cor}">${esc(I.titulo)}</span></div>
+    <div class="ord-m"><div class="ord-ic">${ic(TRK[Math.min(I.reached, TRK.length - 1)].ic)}</div><div class="tx"><b>${esc(itens)}</b><span>${esc(I.texto)}</span></div></div>
+    <div class="ord-p" aria-hidden="true">${seg}</div>
+    <div class="ord-f"><span class="num">${esc(p.numero)} · ${BRL.format(planTotal(p))}</span><span style="font-weight:600;color:${cor}">${esc(pe)}</span></div></a>`;
+}
+function vAcompanhar() {
+  const u = S.ui; u.acSt = u.acSt || "ativos"; u.acQ = u.acQ || "";
+  let ps = Object.values(S.plans).filter(p => !p.legado);
+  const q = normName(u.acQ.trim());
+  if (q) ps = ps.filter(p => normName([p.numero, p.unidade, p.unidadeCode, p.finalidade, p.itens.map(i => i.descricao).join(" ")].join(" ")).includes(q));
+  const grupos = {ativos:p => STAGES.includes(p.status) && p.status !== "ENTREGUE", entregues:p => p.status === "ENTREGUE", encerrados:p => ["INDEFERIDO","CANCELADO"].includes(p.status), todos:() => true};
+  const cont = Object.fromEntries(Object.entries(grupos).map(([k, f]) => [k, ps.filter(f).length]));
+  ps = ps.filter(grupos[u.acSt]).sort((a, b) => (b.etapas && b.etapas.length ? b.etapas[b.etapas.length - 1].at : b.criadoEm) - (a.etapas && a.etapas.length ? a.etapas[a.etapas.length - 1].at : a.criadoEm));
+  const tabs = [["ativos","A caminho"],["entregues","Entregues"],["encerrados","Não autorizados e cancelados"],["todos","Todos"]];
+  return `<div class="page-h"><div><h1>Acompanhar destinações</h1><p>Veja em que etapa está cada destinação e quando os bens devem chegar à unidade.</p></div></div>
+  <div class="toolbar"><input class="inp q" type="search" placeholder="Buscar por unidade, número do plano ou bem…" value="${esc(u.acQ)}" data-ui="acQ" aria-label="Buscar destinações">
+    <div class="seg" role="group" aria-label="Situação">${tabs.map(([k, l]) => `<button aria-pressed="${u.acSt === k}" data-act="acst" data-k="${k}">${l} <span class="muted">${cont[k]}</span></button>`).join("")}</div></div>
+  ${ps.length ? `<div class="ord-list">${ps.map(ordCard).join("")}</div>` : `<div class="empty card"><b>Nada por aqui</b>${u.acSt === "ativos" ? "Nenhuma destinação em andamento no momento." : "Nenhuma destinação nesta situação."}</div>`}`;
+}
 function vPlanos() {
   const u = S.ui; const detHtml = detCard();
   let plans = Object.values(S.plans);
@@ -1913,8 +2055,9 @@ function vPlano() {
   <div class="page-h"><div><div class="row wrap" style="gap:10px"><h1 class="num">${esc(p.numero)}</h1>${stPill(p.status)}${isLate(p) ? `<span class="pill" style="color:var(--warn-ink);background:var(--warn-soft)">${ic("clock").replace("<svg", '<svg style="width:12px;height:12px"')}${daysSince(stageEnteredAt(p))} dias na etapa · prazo ${S.cfg.sla[p.status]}</span>` : ""}</div>
     <p style="margin-top:6px"><b>${esc(p.finalidade)}</b> · ${esc(p.unidade)}</p>${p.unidadeCode && ORG.by.get(p.unidadeCode) ? `<p class="small muted">${esc(uPathText(p.unidadeCode) || S.cfg.sigla)} · código SIPAC ${esc(p.unidadeCode)}</p>` : ""}</div>
     <div class="r">${actions}</div></div>
-  <div class="card" style="padding:16px 18px;margin-bottom:16px"><div class="mrail">${mrail}</div>
-    ${p.status === "INDEFERIDO" && p.indeferimento ? `<div class="alert critical" style="margin-top:10px"><div class="ic">${ic("x")}</div><div><b>Indeferido por ${esc(S.cfg.signatarios[p.indeferimento.role]?.cargo || ROLES[p.indeferimento.role].label)} em ${fmtD(p.indeferimento.at)}</b><p>${esc(p.indeferimento.motivo)}</p></div></div>` : ""}
+  ${planTrack(p)}
+  <div class="card" style="padding:${p.legado ? "16px 18px" : "0 18px"};margin-bottom:${p.legado || p.devolucao && p.status === "RASCUNHO" || p.status === "INDEFERIDO" && p.indeferimento ? "16px" : "0"};${p.legado || p.devolucao && p.status === "RASCUNHO" || p.status === "INDEFERIDO" && p.indeferimento ? "" : "border:0;box-shadow:none;background:none"}">${p.legado ? `<div class="mrail">${mrail}</div>` : ""}
+  <div class="card" style="${p.legado ? "padding:16px 18px;margin-bottom:16px" : (p.devolucao && p.status === "RASCUNHO") || (p.status === "INDEFERIDO" && p.indeferimento) ? "padding:0;margin:-6px 0 16px;border:0;box-shadow:none;background:none" : "display:none"}">${p.legado ? `<div class="mrail">${mrail}</div>` : ""}
     ${p.legado ? `<div class="alert" style="margin-top:10px"><div class="ic" style="background:var(--panel);color:var(--ink-2)">${ic("planos")}</div><div><b>Registro histórico</b><p>Saída feita antes da implantação do Destina e importada da planilha de controle. Não passou pelo fluxo de autorização e assinatura do sistema.</p></div></div>` : ""}
     ${p.devolucao && p.status === "RASCUNHO" ? `<div class="alert warning" style="margin-top:10px"><div class="ic">${ic("ret")}</div><div><b>Devolvido para ajustes</b><p>${esc(p.devolucao)}</p></div></div>` : ""}
   </div>
@@ -3942,7 +4085,8 @@ function localAnswerRegras(q, msg) {
       if (p.status === "AUTORIZACAO" && can.sign(p)) act({tipo:"assinar", plano_id:p.id, rotulo:"Revisar e assinar"});
       const sig = Object.entries(p.assinaturas || {}).map(([r, a]) => `${S.cfg.signatarios[r] ? S.cfg.signatarios[r].cargo : r} (${nameOf(a.by)}, ${fmtD(a.at)})`);
       const e = p.entrega;
-      return `**${esc(p.numero)}** · ${esc(ST[p.status].l)}\n- Unidade: ${esc(p.unidade)}\n- ${fmtN(planQtd(p))} bens · ${BRL.format(planTotal(p))}\n` +
+      const TI = planTrkInfo(p);
+      return `**${esc(p.numero)}** · ${esc(TI.titulo)}\n${esc(TI.texto)}\n` + (TI.eta ? `- ${TI.late ? "Atrasado. Nova previsão" : "Previsão de entrega"}: **até ${fmtLongo(TI.eta)}** (${fmtSemana(TI.eta)})\n` : "") + `- Unidade: ${esc(p.unidade)}\n- ${fmtN(planQtd(p))} bens · ${BRL.format(planTotal(p))}\n` +
         (p.finalidade ? `- Finalidade: ${esc(p.finalidade)}\n` : "") + (p.processo ? `- Processo: ${esc(p.processo)}\n` : "") +
         `- Criado por ${esc(nameOf(p.criadoPor))} em ${fmtD(p.criadoEm)}\n` +
         (STAGES.includes(p.status) && p.status !== "ENTREGUE" ? `- Na etapa há ${daysSince(stageEnteredAt(p))} dias${isLate(p) ? " (acima do prazo)" : ""} · próximo: ${esc(nextResp(p))}\n` : "") +
@@ -4383,6 +4527,7 @@ document.addEventListener("click", async e => {
     case "stage": S.ui.planSt = el.dataset.s; S.ui.planView = "lista"; go("planos"); break;
     case "item": openItem(id); break;
     case "plan": closeModal(); go("plano-" + id); break;
+    case "acst": S.ui.acSt = el.dataset.k; render(); break;
     case "new-item": formItem(); break;
     case "new-entry": closeModal(); formEntrada(id || null); break;
     case "edit-item": formItem(id); break;
