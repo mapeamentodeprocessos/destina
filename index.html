@@ -1389,7 +1389,7 @@ function vPainel() {
   return `
   <div class="page-h"><div><h1>${saud}${firstName ? ", " + esc(firstName) : ""}.</h1>
     <p>${pend.length ? `Você tem <b>${plural(pend.length, "pendência")}</b> no perfil ${esc(ROLES[S.role].label)}.` : `Nenhuma pendência no perfil ${esc(ROLES[S.role].label)}.`} A reserva técnica soma <b>${BRL.format(valorRes)}</b> em ${plural(unid, "bem", "bens")} sob guarda.</p></div>
-    <div class="r">${can.createPlan() ? `<button class="btn primary" data-act="new-plan">${ic("plus")}Novo plano de destinação</button>` : ""}</div></div>
+    <div class="r">${canDeterminar() || canPropor() ? `<button class="btn primary" data-act="det-nova">${ic("plus")}${canDeterminar() ? "Decidir destinação" : "Propor destinação"}</button>` : ""}</div></div>
 
   <section class="card rail-wrap" aria-label="Trilho de destinação">
     <div class="row wrap"><div><h2>Trilho de destinação</h2><p class="lead">Cada estação é uma etapa do fluxo. Toque em uma para ver os planos que estão nela.</p></div></div>
@@ -1530,7 +1530,7 @@ function openItem(id) {
       ${res.length ? `<div class="small" style="margin-top:8px">${Object.entries(porEmp).map(([eid, ns]) => { const e = S.empenhos[eid]; return `<div style="padding:6px 0;border-bottom:1px solid var(--line-2)"><a href="#" data-act="emp-abrir" data-id="${eid}"><b>${esc(e ? e.numero : "Empenho")}</b>${e && e.nf ? " · NF " + esc(e.nf) : ""}</a> <span class="muted">(${fmtN(ns.length)})</span><div class="num">${esc(faixas(ns))}</div></div>`; }).join("")}</div>` : '<p class="small muted" style="margin-top:6px">Todos os bens tombados deste material já foram entregues.</p>'}`; })()}
     <hr><h3 style="margin-bottom:8px">Destinações deste material</h3>
     ${plans.length ? plans.map(p => { const li = p.itens.find(x => x.itemId === id); return `<div class="li" style="grid-template-columns:1fr auto;padding:10px 0" data-act="plan" data-id="${p.id}"><div><b>${esc(p.numero)}</b> · <span class="ink2">${esc(p.unidade)}</span></div><div class="row"><span class="num">${fmtN(li.qtd)} un.</span>${p.legado ? '<span class="pill">Histórico</span>' : stPill(p.status)}</div></div>`; }).join("") : '<p class="muted">Este material ainda não foi destinado.</p>'}`,
-    foot:`${can.editItems() ? `<button class="btn danger" data-act="del-item" data-id="${id}" ${plans.length ? "disabled title='Material já usado em destinações'" : ""}>Excluir</button><span class="sp"></span><button class="btn" data-act="edit-item" data-id="${id}">Editar cadastro</button>` : '<span class="sp"></span>'}${can.createPlan() && s.disp > 0 ? `<button class="btn primary" data-act="new-plan" data-item="${id}">Destinar este material</button>` : ""}`});
+    foot:`${can.editItems() ? `<button class="btn danger" data-act="del-item" data-id="${id}" ${plans.length ? "disabled title='Material já usado em destinações'" : ""}>Excluir</button><span class="sp"></span><button class="btn" data-act="edit-item" data-id="${id}">Editar cadastro</button>` : '<span class="sp"></span>'}${(canDeterminar() || canPropor()) && s.disp > 0 ? `<button class="btn primary" data-act="new-plan" data-item="${id}">Destinar este material</button>` : ""}`});
 }
 const stPill = s => `<span class="pill st-${s}"><i></i>${ST[s].l}</span>`;
 
@@ -1961,11 +1961,11 @@ function vPlanos() {
   const filt = [["ativos","Em andamento"],["concluidos","Entregues"],["historico","Histórico"],["encerrados","Indeferidos e cancelados"],["todos","Todos"]];
   const extra = STAGES.includes(u.planSt) ? `<button aria-pressed="true">${ST[u.planSt].l}</button>` : "";
   return `<div class="page-h"><div><h1>Planos de destinação</h1><p>Via de regra, o plano nasce da decisão da Reitoria ou da Pró-Reitoria de Administração; a Divisão de Patrimônio e o Almoxarifado também podem iniciá-lo. Depois segue o trilho: formalização, autorização, separação e entrega com termo de responsabilidade.</p></div>
-    <div class="r"><div class="seg" role="group" aria-label="Visualização"><button aria-pressed="${u.planView === "lista"}" data-act="pview" data-k="lista">Lista</button><button aria-pressed="${u.planView === "quadro"}" data-act="pview" data-k="quadro">Quadro</button></div>${can.createPlan() ? `<button class="btn primary" data-act="new-plan">${ic("plus")}Novo plano</button>` : ""}</div></div>
+    <div class="r"><div class="seg" role="group" aria-label="Visualização"><button aria-pressed="${u.planView === "lista"}" data-act="pview" data-k="lista">Lista</button><button aria-pressed="${u.planView === "quadro"}" data-act="pview" data-k="quadro">Quadro</button></div>${canDeterminar() || canPropor() ? `<button class="btn primary" data-act="new-plan">${ic("plus")}${canDeterminar() ? "Decidir destinação" : "Propor destinação"}</button>` : ""}</div></div>
   ${detHtml}
   <div class="toolbar"><input class="inp q" type="search" placeholder="Buscar por número, unidade, processo ou finalidade…" value="${esc(u.planQ)}" data-ui="planQ" aria-label="Buscar planos">
     <div class="seg" role="group" aria-label="Situação">${extra}${filt.map(([k, l]) => `<button aria-pressed="${u.planSt === k}" data-act="pst" data-k="${k}">${l}</button>`).join("")}</div></div>
-  ${u.planView === "quadro" ? planKanban(plans) : `<div class="card"><div class="list">${plans.map(planRow).join("") || `<div class="empty"><b>Nenhum plano aqui</b>${can.createPlan() ? 'Crie um plano para destinar bens da reserva a uma unidade.<br><button class="btn primary" data-act="new-plan">Novo plano</button>' : "Quando houver planos nesta situação, eles aparecem aqui."}</div>`}</div></div>`}`;
+  ${u.planView === "quadro" ? planKanban(plans) : `<div class="card"><div class="list">${plans.map(planRow).join("") || `<div class="empty"><b>Nenhum plano aqui</b>${canDeterminar() || canPropor() ? 'O plano começa com a decisão assinada da Reitoria ou da PRA.<br><button class="btn primary" data-act="new-plan">' + (canDeterminar() ? "Decidir destinação" : "Propor destinação") + '</button>' : "Quando houver planos nesta situação, eles aparecem aqui."}</div>`}</div></div>`}`;
 }
 function planRow(p) {
   const late = isLate(p);
@@ -2887,7 +2887,7 @@ function chatDecisao(q, msg) {
     else if (!/TODOS|TUDO|TODAS|PENDENTES/.test(n)) P = P.filter(p => can.sign(p));
     const meus = P.filter(p => can.sign(p));
     if (!P.length) return num ? "Não encontrei esse termo aguardando autorização." : "Não há termos aguardando autorização.";
-    if (!meus.length) return `${plural(P.length, "Termo encontrado", "Termos encontrados")}, mas ${P.length === 1 ? "não depende" : "não dependem"} da sua assinatura agora (aguarda${P.length === 1 ? "" : "m"} ${esc(nextResp(P[0]))}).`;
+    if (!meus.length) return P.length === 1 ? `O ${esc(P[0].numero)} não depende da sua assinatura agora: aguarda ${esc(nextResp(P[0]))}.` : `Esses ${P.length} termos não dependem da sua assinatura agora: aguardam ${esc(nextResp(P[0]))}.`;
     const linhas = [`${indefere ? "Para indeferir" : "Para autorizar"}, revise ${meus.length === 1 ? "o termo" : `os ${meus.length} termos`}:`];
     meus.slice(0, 4).forEach(p => {
       linhas.push(`- **${esc(p.numero)}** · ${esc(p.unidade)} · ${fmtN(planQtd(p))} bens · **${BRL.format(planTotal(p))}**`);
@@ -3198,7 +3198,7 @@ function openCmd() {
   const draw = () => {
     const q = $("#cq").value.trim().toLowerCase(); const st = computeStock();
     const acts = [
-      ...(can.createPlan() ? [{g:"Ações", t:"Novo plano de destinação", i:"plus", run:() => formPlano()}] : []),
+      ...(canDeterminar() || canPropor() ? [{g:"Ações", t:canDeterminar() ? "Decidir destinação" : "Propor destinação", i:"plus", run:() => formDeterminacao()}] : []),
       ...(can.editItems() ? [{g:"Ações", t:"Registrar entrada na reserva", i:"plus", run:() => formEntrada()}, {g:"Ações", t:"Cadastrar material", i:"plus", run:() => formItem()}, {g:"Ações", t:"Importar planilha", i:"up", run:openImport}] : []),
       {g:"Ações", t:"Verificar autenticidade de documento", i:"documentos", run:() => go("documentos")},
       {g:"Ações", t:"Perguntar ao assistente", i:"busca", run:openChat},
@@ -3928,7 +3928,7 @@ function nluResponder(nl, msg) {
       if (!E.uni) return null;
       const P = Object.values(S.plans).filter(p => naUni(p, E.uni) && !p.legado); const at = P.filter(p => STAGES.includes(p.status) && p.status !== "ENTREGUE"), ent = P.filter(p => p.status === "ENTREGUE");
       linhas.push(`**${esc(E.uni.name)}**: ${plural(at.length, "plano em andamento", "planos em andamento")} e ${plural(ent.length, "entrega concluída", "entregas concluídas")} (${fmtN(ent.reduce((a, p) => a + planQtd(p), 0))} bens).`);
-      if (at.length) linhas.push(lista(at, p => `- ${esc(p.numero)} · ${esc(ST[p.status].l)} · ${fmtN(planQtd(p))} bens · ${BRL.format(planTotal(p))}${isLate(p) ? " · **acima do prazo**" : ""}`));
+      if (at.length) linhas.push(lista(at, p => { const TI = planTrkInfo(p); return `- ${esc(p.numero)} · ${esc(TI.titulo)} · ${fmtN(planQtd(p))} bens${TI.eta ? ` · ${TI.late ? "atrasado, nova previsão" : "previsão"}: **até ${fmtLongo(TI.eta)}**` : ""}`; }));
       at.filter(isLate).forEach(p => atencao.push(`${esc(p.numero)} está há ${daysSince(stageEnteredAt(p))} dias em “${esc(ST[p.status].l)}” — próximo: ${esc(nextResp(p))}.`));
       at.slice(0, 2).forEach(p => act({tipo:"abrir_plano", plano_id:p.id, rotulo:"Abrir " + p.numero}));
       if (!P.length) { linhas.length = 0; linhas.push(`Ainda não há planos nem entregas para **${esc(E.uni.name)}**.`); }
@@ -4058,7 +4058,7 @@ function conversaNormal(n, msg) {
     // cumprimentos
     [/^(OI+|OLA|OPA|E AI|EAI|HELLO|HEY|SALVE|BOM DIA|BOA TARDE|BOA NOITE|SAUDACOES)\b/, () => {
       const pediu = /BOM DIA/.test(n) ? "dia" : /BOA TARDE/.test(n) ? "tarde" : /BOA NOITE/.test(n) ? "noite" : "";
-      const real = hora < 12 ? "dia" : hora < 18 ? "tarde" : "noite";
+      const real = hora < 5 ? "noite" : hora < 12 ? "dia" : hora < 18 ? "tarde" : "noite";
       const nota = pediu && pediu !== real ? ` (por aqui já é ${real === "dia" ? "manhã" : real})` : "";
       const sdUsa = pediu ? {dia:"Bom dia", tarde:"Boa tarde", noite:"Boa noite"}[pediu] : sd;
       return `${sdUsa}${vc}! Em que posso ajudar?`; }],
@@ -4518,7 +4518,7 @@ function helloFull() {
     kp = `<div class="as-kpis">${pend ? `<span><b>${pend}</b> ${pend === 1 ? "pendência sua" : "pendências suas"}</span>` : `<span>Nenhuma pendência sua</span>`}<span><b>${BRLc(k.valor_disponivel_conhecido)}</b> disponíveis para destinar</span><span><b>${fmtN(k.bens_sob_guarda)}</b> bens sob guarda</span>${atr ? `<span><b>${atr}</b> acima do prazo</span>` : ""}</div>`; } catch (e) {}
   return `<div class="as-hello"><h2>${saudacao()}${nome ? ", " + esc(nome) : ""}. O que você quer saber?</h2><p class="ink2">Pergunte por texto ou pelo microfone. Eu respondo com os dados do Destina e, quando houver algo a fazer, ofereço o botão certo.</p>${kp}<div class="as-sug">${chatSuggestions(6).map(s => `<button class="as-chip" data-sug="${esc(s)}">${esc(s)}</button>`).join("")}</div></div>`;
 }
-function saudacao() { const h = new Date().getHours(); return h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite"; }
+function saudacao() { const h = new Date().getHours(); return h < 5 ? "Boa noite" : h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite"; }
 function chatSuggestions(max = 4) {
   const s = ["Quantos ar-condicionados temos disponíveis?", "O que está parado há mais tempo na reserva?"];
   if (has("PRA","REITORIA")) { s.unshift("Destinar 20 cadeiras para o CCS"); s.unshift("Quais termos aguardam a minha assinatura?"); }
@@ -4642,7 +4642,7 @@ document.addEventListener("click", async e => {
     case "sit": S.ui.sit = el.dataset.k; render(); break;
     case "pview": S.ui.planView = el.dataset.k; render(); break;
     case "pst": S.ui.planSt = el.dataset.k; render(); break;
-    case "new-plan": closeModal(); formPlano(null, el.dataset.item); break;
+    case "new-plan": closeModal(); if (canDeterminar() || canPropor()) formDeterminacao(el.dataset.item ? {itens:[{material_id:el.dataset.item, quantidade:""}]} : {}); else formPlano(null, el.dataset.item); break;
     case "edit-plan": formPlano(id); break;
     case "send-plan": act_send(id); break;
     case "cancel-plan": act_cancel(id); break;
