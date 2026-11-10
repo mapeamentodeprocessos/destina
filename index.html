@@ -3595,7 +3595,7 @@ function nluResponder(nl, msg) {
       const simNao = parcial ? "" : /^(TEM|TEMOS|AINDA TEM|EXISTE|EXISTEM|HA|POSSUI|POSSUIMOS|TERIA|TERIAMOS|SOBROU|SOBRA)\b/.test(nl.n) ? (T.d > 0 ? "**Sim.** " : "**Não** há disponíveis agora. ") : "";
       linhas.push(`${simNao}Em ${esc(rotMat)}: **${fmtN(T.d)} disponíveis** para destinar, de ${fmtN(T.g)} sob guarda${T.c ? ` (${fmtN(T.c)} já comprometidos em planos)` : ""}${T.v ? ` · ${BRL.format(T.v)}` : ""}.`);
       linhas.push(lista(L, i => `- ${esc(i.descricao)}: **${fmtN(Math.max(0, st[i.id].disp))}** disponíveis${i.localizacao ? " · " + esc(i.localizacao) : ""}`));
-      const par = L.filter(i => st[i.id].disp > 0 && st[i.id].age && daysSince(st[i.id].age) > 180); if (par.length) atencao.push(`${plural(par.length, "material está", "materiais estão")} com saldo parado há mais de 6 meses.`);
+      const par = L.filter(i => st[i.id].disp > 0 && st[i.id].age && daysSince(st[i.id].age) > 180); if (par.length && nl.intent === "diagnostico") atencao.push(`${plural(par.length, "material está", "materiais estão")} com saldo parado há mais de 6 meses.`);
       const tomb = Object.values(S.bens || {}).filter(b => b.situacao === "EM_RESERVA" && matIds.has(b.materialId)).length; if (tomb) linhas.push(`- ${fmtN(tomb)} deles já estão tombados.`);
       if (T.e) linhas.push(`- Já foram entregues ${fmtN(T.e)} às unidades.`);
       if (T.d === 0 && T.g > 0) atencao.push("Todo o saldo está comprometido em planos; novos pedidos dependem de nova aquisição.");
@@ -3608,9 +3608,10 @@ function nluResponder(nl, msg) {
       linhas.push(`A reserva técnica tem **${fmtN(g)} bens sob guarda** (${BRL.format(v)}), em ${plural(its.filter(i => st[i.id].saldo > 0).length, "material", "materiais")}.`);
       linhas.push(`- **${fmtN(d)}** disponíveis para destinar · ${fmtN(c)} comprometidos em planos · ${fmtN(e)} já entregues`);
       const ativos = Object.values(S.plans).filter(p => STAGES.includes(p.status) && p.status !== "ENTREGUE" && !p.legado);
-      if (nl.intent === "resumo" || ativos.length) linhas.push(`- ${plural(ativos.length, "plano em andamento", "planos em andamento")} (${BRL.format(ativos.reduce((a, p) => a + planTotal(p), 0))})`);
+      if (nl.intent === "resumo") linhas.push(`- ${plural(ativos.length, "plano em andamento", "planos em andamento")} (${BRL.format(ativos.reduce((a, p) => a + planTotal(p), 0))})`);
       const mes = Object.values(S.plans).filter(p => p.status === "ENTREGUE" && p.entrega && p.entrega.data >= new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime());
       if (nl.intent === "resumo") linhas.push(`- Entregues neste mês: ${fmtN(mes.reduce((a, p) => a + planQtd(p), 0))} bens em ${plural(mes.length, "plano", "planos")}`);
+      if (nl.intent !== "resumo") { act({tipo:"abrir_tela", tela:"reserva", rotulo:"Ver a reserva"}); return fecha(); } // pergunta de total: só o número, sem pendências não pedidas
       const aut = Object.values(S.plans).filter(p => p.status === "AUTORIZACAO"); if (aut.length) atencao.push(`${plural(aut.length, "termo aguarda", "termos aguardam")} assinatura (${BRL.format(aut.reduce((a, p) => a + planTotal(p), 0))}).`);
       if (k.planos_acima_do_prazo.length) atencao.push(`${plural(k.planos_acima_do_prazo.length, "plano está", "planos estão")} acima do prazo da etapa: ${k.planos_acima_do_prazo.slice(0, 4).join(", ")}.`);
       const semT = empList().filter(x => x.situacao === "RECEBIDO" || x.situacao === "NA_DIPA"); if (semT.length) atencao.push(`${plural(semT.length, "empenho aguarda", "empenhos aguardam")} tombamento pela DIPA.`);
