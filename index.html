@@ -609,7 +609,7 @@ const CFG_DEFAULT = () => ({
 
 // ---------- estado ----------
 const S = {
-  mode:"demo", ready:false, items:{}, plans:{}, sigs:{}, perfis:{}, cfg:CFG_DEFAULT(), empenhos:{}, bens:{},
+  mode:"demo", ready:false, items:{}, plans:{}, sigs:{}, perfis:{}, cfg:CFG_DEFAULT(), empenhos:{}, bens:{}, determ:{},
   me:{id:null, name:"", roles:[]}, role:"PATRIMONIO", route:"painel", param:null,
   ui:{q:"", cat:"", sit:"", loc:"", sort:"saldo", dir:-1, planView:"lista", planSt:"ativos", planQ:""},
   officialAvailable:false, officialCfg:null, isOwner:false, canEdit:false, offline:false
@@ -732,7 +732,7 @@ function docPayload(p) {
 const R = () => S.role;
 const has = (...rs) => rs.includes(R());
 const can = {
-  createPlan: () => has("PATRIMONIO","ALMOXARIFADO","FORMALIZACAO","ADMIN"),
+  createPlan: () => has("PATRIMONIO","FORMALIZACAO","ADMIN"),
   editItems: () => has("PATRIMONIO","ALMOXARIFADO","ADMIN"),
   formalize: () => has("FORMALIZACAO","ADMIN"),
   separate: () => has("ALMOXARIFADO","ADMIN"),
@@ -795,7 +795,7 @@ async function persistSig(rec) {
   try { await queueWrite("assinaturas/" + uid, () => CAP.db.doc("assinaturas/" + uid).set(mine)); return true; } catch (e) { handleDbError(e); return false; }
 }
 function handleDbError(e) { toast((e && e.message) || "Não foi possível gravar agora. Tente novamente.", true); }
-function saveDemo() { lsSet(DEMO_KEY, {items:S.items, plans:S.plans, cfg:S.cfg, sigs:S.sigs, alog:S.alog || [], orgCustom:S.orgCustom || null, empenhos:S.empenhos || {}, bens:S.bens || {}, v:2}); }
+function saveDemo() { lsSet(DEMO_KEY, {items:S.items, plans:S.plans, cfg:S.cfg, sigs:S.sigs, alog:S.alog || [], orgCustom:S.orgCustom || null, empenhos:S.empenhos || {}, bens:S.bens || {}, determ:S.determ || {}, v:2}); }
 
 // ---------- eventos com cadeia de hash ----------
 async function addEvent(p, tipo, msg, extra = {}) {
@@ -1002,8 +1002,9 @@ async function sbLoad(force) {
     SB.req("config?id=eq.1&select=dados,atualizado_em"), q("perfis", "select=id,nome,email,papeis,aprovado,criado_em&order=criado_em"), q("materiais", "select=*&order=criado_em"), q("lotes", "select=*&order=data"),
     q("planos", "select=*&order=criado_em"), q("plano_itens", "select=*"), q("plano_etapas", "select=plano_id,status,em&order=id"), q("eventos", "select=*&order=id"),
     q("assinaturas", "select=*"), q("entregas", "select=*"), q("tombamentos", "select=*"), SB.req("log_assistente?select=*&order=em.desc&limit=300"), SB.req("estrutura_meta?select=*")]);
+  const dets = await q("determinacoes", "select=*&order=criado_em").catch(() => []);
   const [emps, eits, bens] = await Promise.all([q("empenhos", "select=*&order=recebido_em").catch(() => []), q("empenho_itens", "select=*&order=seq").catch(() => []), q("bens", "select=*").catch(() => [])]);
-  const sig = JSON.stringify([cfg[0] && cfg[0].atualizado_em, perfis.map(p => p.id + p.papeis.join() + p.aprovado + p.nome).join(), mats.length, mats.reduce((a, m) => a > m.atualizado_em ? a : m.atualizado_em, ""), lotes.length, planos.length, evs.length && evs[evs.length - 1].id, logs.length && logs[0].id, meta[0] && meta[0].atualizado_em, tombs.length, emps.length, emps.reduce((a, e) => a > e.atualizado_em ? a : e.atualizado_em, ""), bens.length]);
+  const sig = JSON.stringify([cfg[0] && cfg[0].atualizado_em, perfis.map(p => p.id + p.papeis.join() + p.aprovado + p.nome).join(), mats.length, mats.reduce((a, m) => a > m.atualizado_em ? a : m.atualizado_em, ""), lotes.length, planos.length, evs.length && evs[evs.length - 1].id, logs.length && logs[0].id, meta[0] && meta[0].atualizado_em, tombs.length, emps.length, emps.reduce((a, e) => a > e.atualizado_em ? a : e.atualizado_em, ""), bens.length, dets.length, dets.reduce((a, d) => a > d.atualizado_em ? a : d.atualizado_em, "")]);
   if (!force && sig === SBSIG) return false; SBSIG = sig;
   if (cfg[0]) S.cfg = {...CFG_DEFAULT(), ...cfg[0].dados};
   S.perfisList = perfis; S.perfis = {}; perfis.forEach(p => { NAMES[p.id] = p.nome || p.email || "Usuário"; if (p.aprovado) S.perfis[p.id] = p.papeis; });
@@ -1032,6 +1033,7 @@ async function sbLoad(force) {
   const EI = {}; eits.forEach(i => { const x = {id:i.id, seq:i.seq, descricao:i.descricao, unidadeMedida:i.unidade_medida, qtd:i.qtd, vu:+i.vu, materialId:i.material_id, loteId:i.lote_id, empenhoId:i.empenho_id}; EI[i.id] = x; if (EM[i.empenho_id]) EM[i.empenho_id].itens.push(x); });
   const BE = {}; bens.forEach(b => { const it = EI[b.empenho_item_id]; BE[b.numero] = {numero:b.numero, itemId:b.empenho_item_id, empenhoId:it ? it.empenhoId : null, materialId:b.material_id, situacao:b.situacao, planoId:b.plano_id, geradoPor:b.gerado_por, geradoEm:ms(b.gerado_em), entregueEm:ms(b.entregue_em)}; });
   S.empenhos = EM; S.bens = BE;
+  const DT = {}; dets.forEach(d => DT[d.id] = {id:d.id, numero:d.numero, papel:d.papel, autor:d.autor, unidade:d.unidade, unidadeCode:d.unidade_code, itens:d.itens || [], observacao:d.observacao, situacao:d.situacao, planoId:d.plano_id, origem:d.origem, criadoEm:ms(d.criado_em)}); S.determ = DT;
   S.alog = logs.map(l => ({at:ms(l.em), by:l.por, role:l.papel, tipo:l.tipo, texto:l.texto, acao:l.acao}));
   const mk = meta[0] ? JSON.stringify(meta[0]) : "";
   if (mk && S.orgMetaKey !== mk) { const us = await q("unidades", "select=code,name,parent_code&order=ordem"); if (us.length) { loadOrg(us.map(u => [u.code, u.name, u.parent_code || ""]), {fonte:meta[0].fonte, atualizadoEm:meta[0].atualizado_em}); S.orgMetaKey = mk; } }
@@ -1121,6 +1123,7 @@ async function boot() {
   if (saved && saved.v === 2 && saved.items && Object.keys(saved.items).length) {
     S.items = saved.items; S.plans = saved.plans || {}; S.cfg = {...CFG_DEFAULT(), ...(saved.cfg || {})}; S.sigs = saved.sigs || {}; S.alog = saved.alog || []; if (saved.orgCustom) { S.orgCustom = saved.orgCustom; loadOrg(saved.orgCustom.u, saved.orgCustom); }
     if (saved.empenhos) { S.empenhos = saved.empenhos; S.bens = saved.bens || {}; } else { seedEmpenhosDemo(); saveDemo(); }
+    S.determ = saved.determ || {};
   } else {
     S.cfg = CFG_DEFAULT();
     S.cfg.signatarios = {PRA:{nome:"Prof. Ricardo Albuquerque", cargo:"Pró-Reitor de Administração"}, REITORIA:{nome:"Prof.ª Helena Cavalcanti", cargo:"Reitora"}};
@@ -1170,7 +1173,7 @@ function leaveToDemo() {
   lsSet("destina_mode", "demo");
   S.mode = "demo";
   const saved = lsGet(DEMO_KEY);
-  loadOrgDefault(); if (saved) { S.items = saved.items; S.plans = saved.plans; S.cfg = {...CFG_DEFAULT(), ...saved.cfg}; S.sigs = saved.sigs || {}; S.alog = saved.alog || []; if (saved.orgCustom) { S.orgCustom = saved.orgCustom; loadOrg(saved.orgCustom.u, saved.orgCustom); } if (saved.empenhos) { S.empenhos = saved.empenhos; S.bens = saved.bens || {}; } else seedEmpenhosDemo(); }
+  loadOrgDefault(); if (saved) { S.items = saved.items; S.plans = saved.plans; S.cfg = {...CFG_DEFAULT(), ...saved.cfg}; S.sigs = saved.sigs || {}; S.alog = saved.alog || []; if (saved.orgCustom) { S.orgCustom = saved.orgCustom; loadOrg(saved.orgCustom.u, saved.orgCustom); } if (saved.empenhos) { S.empenhos = saved.empenhos; S.bens = saved.bens || {}; } else seedEmpenhosDemo(); S.determ = saved.determ || {}; }
   enterDemoPersona(lsGet("destina_persona") || "u_pat", true);
   renderShell(); render();
   toast("Você está no ambiente de demonstração.");
@@ -1203,7 +1206,7 @@ function go(k) { if (location.hash === "#" + k) { routeFromHash(); render(); } e
 const navCount = k => {
   if (k === "autorizacoes") return Object.values(S.plans).filter(p => can.sign(p)).length;
   if (k === "entregas") return Object.values(S.plans).filter(p => (p.status === "AUTORIZADO" || p.status === "SEPARACAO") && can.separate() || p.status === "PRONTO" && can.deliver()).length;
-  if (k === "planos") return Object.values(S.plans).filter(p => p.status === "INSTRUCAO" && can.formalize()).length;
+  if (k === "planos") return Object.values(S.plans).filter(p => p.status === "INSTRUCAO" && can.formalize()).length + (can.createPlan() ? detAbertas().length : 0);
   if (k === "empenhos") return empList().filter(e => e.situacao === "RECEBIDO" && R() === "ALMOXARIFADO" || empCanTombar() && (e.situacao === "NA_DIPA" || e.situacao === "TOMBADO" || e.situacao === "EMPLAQUETAMENTO_AGENDADO" && e.emplData && e.emplData <= now() + DAY)).length;
   if (k === "monitoramento") return 0;
   return 0;
@@ -1786,7 +1789,7 @@ function exportCSV() {
 
 // ---------- PLANOS ----------
 function vPlanos() {
-  const u = S.ui;
+  const u = S.ui; const detHtml = detCard();
   let plans = Object.values(S.plans);
   const q = u.planQ.trim().toLowerCase();
   if (q) plans = plans.filter(p => [p.numero, planUnitText(p), p.unidadeCode, p.finalidade, p.processo, p.justificativa].join(" ").toLowerCase().includes(q) || normName([p.numero, planUnitText(p), p.finalidade].join(" ")).includes(normName(q)));
@@ -1800,6 +1803,7 @@ function vPlanos() {
   const extra = STAGES.includes(u.planSt) ? `<button aria-pressed="true">${ST[u.planSt].l}</button>` : "";
   return `<div class="page-h"><div><h1>Planos de destinação</h1><p>Cada plano reúne os bens destinados a uma unidade e percorre o trilho: instrução documental, autorização, separação e entrega com termo de responsabilidade.</p></div>
     <div class="r"><div class="seg" role="group" aria-label="Visualização"><button aria-pressed="${u.planView === "lista"}" data-act="pview" data-k="lista">Lista</button><button aria-pressed="${u.planView === "quadro"}" data-act="pview" data-k="quadro">Quadro</button></div>${can.createPlan() ? `<button class="btn primary" data-act="new-plan">${ic("plus")}Novo plano</button>` : ""}</div></div>
+  ${detHtml}
   <div class="toolbar"><input class="inp q" type="search" placeholder="Buscar por número, unidade, processo ou finalidade…" value="${esc(u.planQ)}" data-ui="planQ" aria-label="Buscar planos">
     <div class="seg" role="group" aria-label="Situação">${extra}${filt.map(([k, l]) => `<button aria-pressed="${u.planSt === k}" data-act="pst" data-k="${k}">${l}</button>`).join("")}</div></div>
   ${u.planView === "quadro" ? planKanban(plans) : `<div class="card"><div class="list">${plans.map(planRow).join("") || `<div class="empty"><b>Nenhum plano aqui</b>${can.createPlan() ? 'Crie um plano para destinar bens da reserva a uma unidade.<br><button class="btn primary" data-act="new-plan">Novo plano</button>' : "Quando houver planos nesta situação, eles aparecem aqui."}</div>`}</div></div>`}`;
@@ -1825,7 +1829,7 @@ function formPlano(id, preItem, draft) {
   if (preItem && !sel.some(x => x.itemId === preItem)) { const it = S.items[preItem]; sel.push({itemId:it.id, codigo:it.codigo, descricao:it.descricao, qtd:1, vu:it.valorUnitario}); }
   const dispOf = iid => { const s = st[iid]; if (!s) return 0; const own = id ? (S.plans[id].itens.find(x => x.itemId === iid) || {}).qtd || 0 : 0; return s.disp + (S.plans[id] && COMPROMETE.concat(RESERVA).includes(S.plans[id].status) ? own : 0); };
   if (draft) draft.itens.forEach(x => { const it = S.items[x.material_id]; if (!it || sel.some(y => y.itemId === it.id)) return; const d = dispOf(it.id); if (d <= 0) return; sel.push({itemId:it.id, codigo:it.codigo, descricao:it.descricao, qtd:Math.min(d, x.quantidade), vu:it.valorUnitario}); });
-  const m = openModal({xl:true, title:id ? "Editar plano " + esc(p0.numero) : "Novo plano de destinação", body:`${draft ? `<div class="alert good" style="margin-bottom:14px"><div class="ic">${ic("check")}</div><div><b>Rascunho preparado pelo assistente</b><p>Revise unidade, justificativa e quantidades antes de salvar. Nada foi gravado ainda.</p></div></div>` : ""}
+  const m = openModal({xl:true, title:id ? "Editar plano " + esc(p0.numero) : "Novo plano de destinação", body:`${draft ? `<div class="alert good" style="margin-bottom:14px"><div class="ic">${ic("check")}</div><div><b>${draft.detId ? "Plano a partir da determinação " + esc((S.determ[draft.detId] || {}).numero || "") : "Rascunho preparado pelo assistente"}</b><p>Revise unidade, justificativa e quantidades antes de salvar. Nada foi gravado ainda.</p></div></div>` : ""}
     <form id="f-plan" class="form-grid" autocomplete="off">
       <div class="field full"><label>Unidade de destino <span class="muted">(hierarquia SIPAC)</span></label><div id="upk-plan"></div></div>
       <div class="field"><label>Finalidade (título curto)</label><input class="inp" name="finalidade" required maxlength="70" value="${esc(p0.finalidade)}" placeholder="Ex.: Laboratório de práticas contábeis"></div>
@@ -1837,7 +1841,7 @@ function formPlano(id, preItem, draft) {
     <div class="pick-list" id="pick-list" style="margin-top:10px"></div>
     <div id="sel" style="margin-top:14px"></div>
     <div id="alc" style="margin-top:12px"></div>`, foot:`<button class="btn" data-act="close">Cancelar</button><button class="btn" id="pl-save">Salvar rascunho</button><button class="btn primary" id="pl-send">Salvar e enviar para instrução</button>`});
-  let unidadeSel = {code:p0.unidadeCode || "", name:p0.unidade || ""};
+  let unidadeSel = {code:p0.unidadeCode || (draft && draft.unidadeCode) || "", name:p0.unidade || ""};
   if (draft && draft.unidade && !unidadeSel.code) { const mu = matchUnit(draft.unidade) || searchUnits(draft.unidade, 1)[0]; if (mu) unidadeSel = {code:mu.code, name:mu.name}; }
   mountUnitPicker($("#upk-plan", m), unidadeSel, v => { unidadeSel = v; });
   const drawPick = () => {
@@ -1867,7 +1871,7 @@ function formPlano(id, preItem, draft) {
     if (S.mode === "oficial") {
       const orgU = unidadeSel.code ? orgaoOf(unidadeSel.code) : null;
       const pid = await sbDo("salvar_plano", {p_papel:R(), p_id:id || null, p_dados:{unidade:unidadeSel.name.trim(), unidadeCode:unidadeSel.code || "", orgaoCode:orgU ? orgU.code : "", finalidade:fd.finalidade.trim(), justificativa:fd.justificativa.trim(), demanda:fd.demanda.trim(), origemAssistente:!!draft, itens:sel.map(x => ({itemId:x.itemId, qtd:x.qtd}))}, p_enviar:!!send}, null);
-      if (pid) { closeModal(); toast(send ? "Plano enviado para instrução." : "Rascunho salvo."); location.hash = "plano-" + (typeof pid === "string" ? pid : id); }
+      if (pid) { if (draft && draft.detId && typeof pid === "string") { try { await SB.rpc("atender_determinacao", {p_papel:R(), p_id:draft.detId, p_plano:pid}); await sbLoad(true); } catch (e) { toast("Plano salvo, mas a determinação não foi baixada: " + e.message, true); } } closeModal(); toast(send ? "Plano enviado para instrução." : "Rascunho salvo."); location.hash = "plano-" + (typeof pid === "string" ? pid : id); }
       return;
     }
     let p;
@@ -1882,7 +1886,8 @@ function formPlano(id, preItem, draft) {
     Object.assign(p, {unidade:unidadeSel.name.trim(), unidadeCode:unidadeSel.code || "", orgaoCode:orgU ? orgU.code : "", finalidade:fd.finalidade.trim(), justificativa:fd.justificativa.trim(), demanda:fd.demanda.trim(), itens:sel.map(x => ({itemId:x.itemId, codigo:x.codigo, descricao:x.descricao, qtd:x.qtd, vu:x.vu}))});
     if (id) await addEvent(p, "edicao", "Plano editado · " + plural(planQtd(p), "bem", "bens") + " · " + BRL.format(planTotal(p)));
     if (send) { setStatus(p, "INSTRUCAO"); await addEvent(p, "envio", "Enviado para instrução documental"); }
-    if (await persist("planos", p.id, p)) { closeModal(); toast(send ? p.numero + " enviado para instrução." : "Rascunho " + p.numero + " salvo."); location.hash = "plano-" + p.id; renderShell(); render(); }
+    if (draft && draft.detId && !id) { await addEvent(p, "determinacao", "Plano montado a partir da determinação " + ((S.determ[draft.detId] || {}).numero || "")); }
+    if (await persist("planos", p.id, p)) { if (draft && draft.detId && !id) { try { DET_LOCAL.atender({p_id:draft.detId, p_plano:p.id}); saveDemo(); } catch (e) {} } closeModal(); toast(send ? p.numero + " enviado para instrução." : "Rascunho " + p.numero + " salvo."); location.hash = "plano-" + p.id; renderShell(); render(); }
   };
   $("#pl-save").onclick = () => save(false);
   $("#pl-send").onclick = () => save(true);
@@ -2543,6 +2548,124 @@ function seedEmpenhosDemo() {
   mk("2026NE000431", "7781", "Clima Forte Engenharia", "34.567.890/0001-12", 25, "EMPLAQUETAMENTO_AGENDADO", [[d, 12]], "310400");
 }
 
+// ---------- DETERMINAÇÕES DE DESTINAÇÃO (Reitoria e Pró-Reitoria, pela tela ou pelo chat) ----------
+const canDeterminar = () => has("PRA", "REITORIA", "ADMIN");
+const detList = () => Object.values(S.determ || {}).sort((a, b) => b.criadoEm - a.criadoEm);
+const detAbertas = () => detList().filter(d => d.situacao === "ABERTA");
+const DET_RPC = {registrar:"registrar_determinacao", atender:"atender_determinacao", cancelar:"cancelar_determinacao"};
+async function detDo(op, args, okMsg) {
+  if (S.mode === "oficial") return sbDo(DET_RPC[op], {p_papel:R(), ...args}, okMsg);
+  try { const r = DET_LOCAL[op](args); saveDemo(); renderShell(); render(); if (okMsg) toast(okMsg); return r === undefined ? true : r; }
+  catch (e) { toast(e.message, true); return false; }
+}
+const DET_LOCAL = {
+  registrar({p_dados:d}) {
+    if (!canDeterminar()) throw new Error(`O perfil "${R()}" não pode executar esta ação.`);
+    if (!String(d.unidade || "").trim()) throw new Error("Informe a unidade de destino.");
+    if (!(d.itens || []).length) throw new Error("Informe ao menos um bem a destinar.");
+    const st = computeStock();
+    const itens = d.itens.map(x => { const it = S.items[x.material_id]; if (!it) throw new Error("Material não encontrado."); if (!(x.quantidade > 0)) throw new Error(`Quantidade inválida para "${it.descricao}".`); if (x.quantidade > st[it.id].disp) throw new Error(`Só há ${st[it.id].disp} disponíveis de "${it.descricao}".`); return {material_id:it.id, descricao:it.descricao, quantidade:+x.quantidade}; });
+    const yr = new Date().getFullYear(); const n = detList().filter(x => new Date(x.criadoEm).getFullYear() === yr).length + 1;
+    const det = {id:"dt" + rid(10), numero:`DT ${String(n).padStart(4, "0")}/${yr}`, papel:R(), autor:S.me.id, unidade:d.unidade.trim(), unidadeCode:d.unidadeCode || "", itens, observacao:d.observacao || "", situacao:"ABERTA", planoId:null, origem:d.origem || "tela", criadoEm:now()};
+    S.determ[det.id] = det; return det.id;
+  },
+  atender({p_id, p_plano}) { const d = S.determ[p_id]; if (!d || d.situacao !== "ABERTA") throw new Error("Esta determinação não está mais aberta."); d.situacao = "ATENDIDA"; d.planoId = p_plano; },
+  cancelar({p_id, p_motivo}) { const d = S.determ[p_id]; if (!d || d.situacao !== "ABERTA" || (d.autor !== S.me.id && R() !== "ADMIN")) throw new Error("Só quem determinou (ou o gestor) pode cancelar uma determinação aberta."); d.situacao = "CANCELADA"; d.observacao = (d.observacao + " [Cancelada" + (p_motivo ? ": " + p_motivo : "") + "]").trim(); }
+};
+const detCargo = d => (S.cfg.signatarios[d.papel] || {}).cargo || (d.papel === "ADMIN" ? "Gestor do sistema" : d.papel);
+function detCard() {
+  const ab = detAbertas(); const meus = canDeterminar();
+  if (!ab.length && !meus) return "";
+  return `<section class="card" style="margin-bottom:16px"><div class="card-h"><h3>Determinações de destinação</h3><span class="sub">${ab.length ? plural(ab.length, "aberta aguardando plano", "abertas aguardando plano") : "nenhuma aberta"}</span>${meus ? `<span class="sp"></span><button class="btn sm primary" data-act="det-nova">${ic("plus")}Determinar destinação</button>` : ""}</div>
+    ${ab.length ? `<div class="list">${ab.map(d => `<div class="li" style="grid-template-columns:minmax(0,1fr) auto"><div class="it-t"><b>${esc(d.numero)} · ${esc(d.unidade)}</b><small>${d.itens.map(i => `${fmtN(i.quantidade)} × ${esc(i.descricao)}`).join("; ")}<br>Determinada por ${esc(detCargo(d))} em ${fmtD(d.criadoEm)}${d.origem === "chat" ? " · pelo assistente" : ""}${d.observacao ? " · " + esc(d.observacao) : ""}</small></div>
+      <div class="row" style="gap:6px">${can.createPlan() ? `<button class="btn sm primary" data-act="det-plano" data-id="${d.id}">Montar plano</button>` : ""}${(d.autor === S.me.id || R() === "ADMIN") ? `<button class="btn sm ghost" data-act="det-cancelar" data-id="${d.id}">Cancelar</button>` : ""}</div></div>`).join("")}</div>`
+    : `<div class="card-b"><p class="small muted">Diga ao assistente, por exemplo: “destinar 30 cadeiras para o CCS”. A determinação aparece aqui para a Formalização montar o plano.</p></div>`}</section>`;
+}
+function detMontarPlano(id) {
+  const d = S.determ[id]; if (!d) return;
+  formPlano(null, null, {unidade:d.unidade, unidadeCode:d.unidadeCode, finalidade:("Determinação " + d.numero).slice(0, 70), justificativa:`Destinação determinada pela ${detCargo(d)} (${d.numero}, ${fmtD(d.criadoEm)}).${d.observacao ? " " + d.observacao : ""}`, itens:d.itens.map(i => ({material_id:i.material_id, quantidade:i.quantidade})), detId:d.id, origem:"determinacao"});
+}
+function formDeterminacao(pre) {
+  pre = pre || {}; let uni = {code:pre.unidadeCode || "", name:pre.unidade || ""};
+  const st = computeStock(); const mats = Object.values(S.items).filter(i => st[i.id].disp > 0).sort((a, b) => a.descricao.localeCompare(b.descricao, "pt-BR"));
+  let rows = (pre.itens && pre.itens.length ? pre.itens : [{material_id:"", quantidade:""}]).map(x => ({...x}));
+  const m = openModal({title:"Determinar destinação", sub:"A Formalização monta o plano a partir desta determinação", body:`
+    <div class="field"><label>Unidade de destino</label><div id="upk-det"></div></div>
+    <div id="det-rows" style="margin-top:10px"></div><button class="btn sm" id="det-add" style="margin-top:6px">${ic("plus")}Outro bem</button>
+    <div class="field" style="margin-top:12px"><label>Observação <span class="muted">(opcional)</span></label><input class="inp" id="det-obs" value="${esc(pre.observacao || "")}" placeholder="Ex.: atender a nova sala de aula do bloco B"></div>`,
+    foot:`<button class="btn" data-act="close">Cancelar</button><button class="btn primary" id="det-go">Registrar determinação</button>`});
+  mountUnitPicker($("#upk-det", m), uni, v => { uni = v; });
+  const draw = () => { $("#det-rows", m).innerHTML = rows.map((r, k) => `<div class="row" style="gap:8px;margin-bottom:6px"><select class="inp" data-dr="${k}" style="flex:1"><option value="">Escolha o bem…</option>${mats.map(i => `<option value="${i.id}" ${i.id === r.material_id ? "selected" : ""}>${esc(i.descricao)} (${fmtN(st[i.id].disp)} disp.)</option>`).join("")}</select><input class="inp num" data-dq="${k}" value="${esc(r.quantidade)}" placeholder="Qtd." inputmode="numeric" style="width:90px">${rows.length > 1 ? `<button class="btn ghost icon-btn" data-dx="${k}" aria-label="Remover">${ic("x")}</button>` : ""}</div>`).join(""); };
+  draw();
+  m.addEventListener("change", e => { const t = e.target; if (t.dataset.dr !== undefined) rows[+t.dataset.dr].material_id = t.value; if (t.dataset.dq !== undefined) rows[+t.dataset.dq].quantidade = t.value; });
+  m.addEventListener("click", e => { const x = e.target.closest("[data-dx]"); if (x) { rows.splice(+x.dataset.dx, 1); draw(); } });
+  $("#det-add", m).onclick = () => { rows.push({material_id:"", quantidade:""}); draw(); };
+  $("#det-go", m).onclick = async () => {
+    const itens = rows.filter(r => r.material_id).map(r => ({material_id:r.material_id, quantidade:Math.round(+String(r.quantidade).replace(",", ".") || 0)}));
+    if (!uni.name) { toast("Escolha a unidade de destino.", true); return; } if (!itens.length) { toast("Escolha ao menos um bem.", true); return; }
+    const r = await detDo("registrar", {p_dados:{unidade:uni.name, unidadeCode:uni.code || "", itens, observacao:$("#det-obs", m).value.trim(), origem:pre.origem || "tela"}}, "Determinação registrada. A Formalização vai montar o plano.");
+    if (r) closeModal();
+  };
+}
+// ---------- pelo chat: determinar, autorizar e indeferir ----------
+function chatDecisao(q, msg) {
+  let nl; try { nl = nluEntender(q); } catch (e) { return null; }
+  const n = nl.n || "", E = nl.ents, act = a => { if (actionAllowed(a)) msg.actions.push(a); };
+  // continuação de uma determinação incompleta ("para o CCS", "30")
+  if (AS.slot && n.split(" ").length <= 6 && (E.uni || E.qtd || E.mat) && !/^(AUTORIZ|ASSIN|INDEFER)/.test(n)) {
+    const s = AS.slot; if (E.uni) s.uni = E.uni; if (E.qtd) s.qtd = E.qtd; if (E.mat) s.mat = E.mat; return chatDeterminarMontar(s, msg);
+  }
+  const verboDest = /^(QUERO |GOSTARIA DE |POR FAVOR |PODE |PODERIA |VAMOS )?(DESTINAR|DESTINE|DESTINA|DETERMINO|DETERMINE|DETERMINAR|MANDE|MANDAR|ENVIE|ENVIAR|ENCAMINHE|ENCAMINHAR|LIBERE|LIBERAR|REPASSE|REPASSAR|DOE|DOAR|ENTREGUE|ENTREGAR)\b/;
+  if (verboDest.test(n) && (E.mat || E.cat)) {
+    if (canDeterminar() || can.createPlan()) return chatDeterminarMontar({mat:E.mat, cat:E.cat, qtd:E.qtd, uni:E.uni}, msg);
+    return "A destinação é determinada pela Reitoria ou pela Pró-Reitoria de Administração. Pelo seu perfil, posso mostrar o saldo e os planos.";
+  }
+  // autorizar / indeferir pelo chat
+  const autoriza = /^(EU )?(AUTORIZ\w*|ASSIN\w*|APROV\w*|DEFIR\w*|DEFERIR|PODE AUTORIZAR|QUERO AUTORIZAR|QUERO ASSINAR|LIBERO|OK PARA)\b/.test(n);
+  const indefere = /^(EU )?(INDEFER\w*|NEG\w*|REJEIT\w*|RECUS\w*|NAO AUTORIZ\w*|NAO APROV\w*|DEVOLV\w*)\b/.test(n);
+  if ((autoriza || indefere) && has("PRA", "REITORIA")) {
+    let P = Object.values(S.plans).filter(p => p.status === "AUTORIZACAO");
+    const num = (q.match(/(\d{1,4})\s*\/\s*(20\d{2})/) || q.match(/\b(?:PD|PLANO|TERMO)\s*(\d{1,4})\b/i));
+    if (num) { const k = String(+num[1]).padStart(4, "0"); P = P.filter(p => String(p.numero).includes(k + "/")); }
+    else if (E.uni) P = P.filter(p => matchText(planUnitText(p), E.uni.name));
+    else if (!/TODOS|TUDO|TODAS|PENDENTES/.test(n)) P = P.filter(p => can.sign(p));
+    const meus = P.filter(p => can.sign(p));
+    if (!P.length) return num ? "Não encontrei esse termo aguardando autorização." : "Não há termos aguardando autorização.";
+    if (!meus.length) return `${plural(P.length, "Termo encontrado", "Termos encontrados")}, mas ${P.length === 1 ? "não depende" : "não dependem"} da sua assinatura agora (aguarda${P.length === 1 ? "" : "m"} ${esc(nextResp(P[0]))}).`;
+    const linhas = [`${indefere ? "Para indeferir" : "Para autorizar"}, revise ${meus.length === 1 ? "o termo" : `os ${meus.length} termos`}:`];
+    meus.slice(0, 4).forEach(p => {
+      linhas.push(`- **${esc(p.numero)}** · ${esc(p.unidade)} · ${fmtN(planQtd(p))} bens · **${BRL.format(planTotal(p))}**`);
+      linhas.push(`- Itens: ${p.itens.slice(0, 3).map(i => `${fmtN(i.qtd)} × ${esc(i.descricao)}`).join("; ")}${p.itens.length > 3 ? "…" : ""}`);
+      if (p.justificativa) linhas.push(`- Justificativa: ${esc(String(p.justificativa).slice(0, 160))}`);
+      act({tipo:indefere ? "indeferir" : "assinar", plano_id:p.id, rotulo:(indefere ? "Indeferir " : "Autorizar ") + p.numero});
+    });
+    if (meus.length > 4) linhas.push(`- e mais ${meus.length - 4}. Abra Autorizações para assinar em lote.`);
+    if (!indefere && meus.length > 1) act({tipo:"abrir_tela", tela:"autorizacoes", rotulo:"Assinar em lote"});
+    linhas.push(indefere ? "Ao indeferir, você informa o motivo e o plano volta encerrado." : "Ao clicar, você confirma com a senha (e o código por e-mail, quando ativo). A assinatura fica registrada no termo.");
+    return linhas.join("\n");
+  }
+  return null;
+}
+function chatDeterminarMontar(s, msg) {
+  const st = computeStock(); const act = a => { if (actionAllowed(a)) msg.actions.push(a); };
+  const cands = s.mat ? s.mat.its : s.cat ? Object.values(S.items).filter(i => i.categoria === s.cat) : [];
+  const it = cands.slice().sort((a, b) => st[b.id].disp - st[a.id].disp)[0];
+  if (!it) { AS.slot = null; return "Não encontrei esse bem na reserva técnica."; }
+  const disp = Math.max(0, st[it.id].disp);
+  if (!s.qtd) { AS.slot = s; return `Quantos **${esc(it.descricao)}** deseja destinar? Há **${fmtN(disp)}** disponíveis.`; }
+  if (!s.uni) { AS.slot = s; return `Para qual unidade vão os **${fmtN(s.qtd)} × ${esc(it.descricao)}**? (ex.: “para o CCS” ou “Biblioteca Central”)`; }
+  AS.slot = null;
+  if (s.qtd > disp) return `**Não há saldo suficiente:** há ${fmtN(disp)} disponíveis de ${esc(it.descricao)}, e o pedido é de ${fmtN(s.qtd)}. Quer destinar ${fmtN(disp)}?`;
+  const dados = {unidade:s.uni.name, unidadeCode:s.uni.code || "", itens:[{material_id:it.id, quantidade:s.qtd}], observacao:"", origem:"chat"};
+  if (canDeterminar()) {
+    act({tipo:"determinar", rotulo:"Confirmar determinação", det:dados});
+    act({tipo:"determinar_ajustar", rotulo:"Ajustar antes", det:dados});
+    return `Vou registrar a determinação:\n- **${fmtN(s.qtd)} × ${esc(it.descricao)}** para **${esc(s.uni.name)}**\n- Disponível hoje: ${fmtN(disp)} (ficam ${fmtN(disp - s.qtd)})\nAo confirmar, a Formalização recebe a determinação para montar o plano, que volta para a sua autorização.`;
+  }
+  act({tipo:"criar_plano", rotulo:"Montar o plano", rascunho:{unidade:s.uni.name, unidadeCode:s.uni.code || "", finalidade:"", justificativa:"", itens:[{material_id:it.id, quantidade:s.qtd}]}});
+  return `Posso montar o plano: **${fmtN(s.qtd)} × ${esc(it.descricao)}** para **${esc(s.uni.name)}** (há ${fmtN(disp)} disponíveis).`;
+}
+
 // ---------- AUTORIZAÇÕES ----------
 function vAutorizacoes() {
   const plans = Object.values(S.plans);
@@ -3126,7 +3249,7 @@ function tIndicadores() {
     planos_por_etapa:Object.fromEntries(STAGES.map(s => [ST[s].l, plans.filter(p => p.status === s && !p.legado).length])), planos_acima_do_prazo:plans.filter(isLate).map(p => p.numero),
     alertas:al.slice(0, 12).map(a => ({gravidade:SEV[a.sev], titulo:a.t, detalhe:a.m.replace(/<[^>]+>/g, "")})), minhas_pendencias:myPending().map(x => ({acao:x.a, numero:x.p.numero, plano_id:x.p.id}))};
 }
-const ACT_TYPES = ["abrir_tela","abrir_plano","abrir_material","criar_plano","assinar","formalizar","iniciar_separacao","conferir","registrar_entrega","registrar_entrada"];
+const ACT_TYPES = ["abrir_tela","abrir_plano","abrir_material","criar_plano","determinar","determinar_ajustar","indeferir","assinar","formalizar","iniciar_separacao","conferir","registrar_entrega","registrar_entrada"];
 function actionAllowed(a) {
   const p = a.plano_id ? S.plans[a.plano_id] : null;
   switch (a.tipo) {
@@ -3135,6 +3258,8 @@ function actionAllowed(a) {
     case "abrir_material": return !!S.items[a.material_id];
     case "criar_plano": return can.createPlan();
     case "assinar": return !!p && p.status === "AUTORIZACAO" && can.sign(p);
+    case "indeferir": return !!p && p.status === "AUTORIZACAO" && can.sign(p);
+    case "determinar": case "determinar_ajustar": return canDeterminar() && !!a.det;
     case "formalizar": return !!p && p.status === "INSTRUCAO" && can.formalize();
     case "iniciar_separacao": return !!p && p.status === "AUTORIZADO" && can.separate();
     case "conferir": return !!p && p.status === "SEPARACAO" && can.separate();
@@ -3237,6 +3362,9 @@ function runAction(a) {
     case "abrir_material": openItem(a.material_id); break;
     case "criar_plano": formPlano(null, null, a.rascunho); break;
     case "assinar": go("plano-" + a.plano_id); setTimeout(() => act_sign(a.plano_id), 120); break;
+    case "indeferir": go("plano-" + a.plano_id); setTimeout(() => act_deny(a.plano_id), 120); break;
+    case "determinar": detDo("registrar", {p_dados:a.det}, null).then(r => { if (!r) return; const d = S.determ[typeof r === "string" ? r : ""] ; AS.msgs.push({role:"assistant", text:`Determinação **${d ? d.numero : ""}** registrada: ${a.det.itens.map(i => `${fmtN(i.quantidade)} × ${esc((S.items[i.material_id] || {}).descricao || "")}`).join("; ")} para **${esc(a.det.unidade)}**. A Formalização já pode montar o plano.`, actions:[], used:[]}); logAssist({tipo:"resposta", texto:"Determinação registrada pelo chat"}); if (AS.full) { AS.min = false; } if (!AS.open) openChat(); drawChat(); }); break;
+    case "determinar_ajustar": formDeterminacao({...a.det, unidade:a.det.unidade, unidadeCode:a.det.unidadeCode}); break;
     case "formalizar": go("plano-" + a.plano_id); setTimeout(() => act_formalize(a.plano_id), 120); break;
     case "iniciar_separacao": go("plano-" + a.plano_id); setTimeout(() => act_startSep(a.plano_id), 120); break;
     case "conferir": go("plano-" + a.plano_id); setTimeout(() => act_conferir(a.plano_id), 120); break;
@@ -3698,6 +3826,7 @@ function conversaNormal(n, msg) {
 function localAnswer(q, msg) {
   const n0 = normName(q).replace(/[?!.,;:()"“”]/g, " ").replace(/\s+/g, " ").trim();
   const cv = conversaNormal(n0, msg); if (cv) return cv;
+  const dc = chatDecisao(q, msg); if (dc) return dc;
   let nl; try { nl = nluEntender(q); } catch (e) { console.error(e); nl = {intent:null, score:0, ents:{}, rank:[]}; }
   const curta = nl.n && nl.n.split(" ").length <= 6;
   // pergunta de continuação: "e de cadeiras?", "e para o CCS?", "e no mês passado?"
@@ -4106,7 +4235,7 @@ function helloFull() {
 function saudacao() { const h = new Date().getHours(); return h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite"; }
 function chatSuggestions(max = 4) {
   const s = ["Quantos ar-condicionados temos disponíveis?", "O que está parado há mais tempo na reserva?"];
-  if (has("PRA","REITORIA")) s.unshift("Quais termos aguardam a minha assinatura?");
+  if (has("PRA","REITORIA")) { s.unshift("Destinar 20 cadeiras para o CCS"); s.unshift("Quais termos aguardam a minha assinatura?"); }
   if (can.createPlan()) s.push("Monte um plano com 20 cadeiras para a Biblioteca Central");
   if (can.separate() || can.deliver()) s.push("O que está pronto para separar ou entregar?");
   s.push("Para onde foram as cadeiras entregues este mês?");
@@ -4246,6 +4375,9 @@ document.addEventListener("click", async e => {
     case "org-import": openOrgImport(); break;
     case "org-reset": { const m = openModal({title:"Restaurar a estrutura da UFPB", body:"<p>A estrutura importada será descartada e o Destina volta a usar a hierarquia SIPAC/UFPB embutida.</p>", foot:`<button class="btn" data-act="close">Voltar</button><button class="btn primary" id="go">Restaurar</button>`}); $("#go", m).onclick = async () => { if (await persistOrg(null)) { closeModal(); toast("Estrutura padrão restaurada."); render(); } }; break; }
     case "layout-conversa": setLayout("conversa"); break;
+    case "det-nova": formDeterminacao(); break;
+    case "det-plano": detMontarPlano(id); break;
+    case "det-cancelar": { const d = S.determ[id]; const m = openModal({title:"Cancelar a determinação " + esc(d.numero) + "?", body:`<div class="field"><label>Motivo <span class="muted">(opcional)</span></label><input class="inp" id="dc-m"></div>`, foot:`<button class="btn" data-act="close">Voltar</button><button class="btn danger" id="dc-go">Cancelar determinação</button>`}); $("#dc-go", m).onclick = async () => { if (await detDo("cancelar", {p_id:id, p_motivo:$("#dc-m", m).value.trim()}, "Determinação cancelada.")) closeModal(); }; break; }
     case "emp-novo": closeModal(); formEmpenho(); break;
     case "emp-import": formImportarEmpenho(); break;
     case "emp-st": S.ui.empSt = id; render(); break;
