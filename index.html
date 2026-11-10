@@ -3290,7 +3290,7 @@ function nluMaterial(n, excl) {
     const cat = CATS.find(c => normName(c) === ph || normName(c).startsWith(ph) && ph.length >= 5);
     if (cat && L === 1) return {cat, txt:cont.slice(i, i + L).join(" ")};
     const its = Object.values(S.items).filter(it => matchText(it.descricao + " " + (it.marca || "") + " " + (it.modelo || ""), ph));
-    if (its.length) { const resto = [...cont.slice(0, i), ...cont.slice(i + L)].filter(w => w.length > 2); return {its, txt:cont.slice(i, i + L).join(" "), termo:ph, resto, frase:cont.join(" ")}; }
+    if (its.length) { const resto = [...cont.slice(0, i), ...cont.slice(i + L)].filter(w => w.length > 2); return {its, txt:cont.slice(i, i + L).join(" "), termo:ph, resto, frase:(() => { const a = n.indexOf(cont[0]), l = cont[cont.length - 1], b = n.lastIndexOf(l); return a >= 0 && b >= a ? n.slice(a, b + l.length) : cont.join(" "); })()}; }
   }
   return null;
 }
@@ -3636,7 +3636,7 @@ function localAnswer(q, msg) {
     if (termo) {
       const tri = s => { const o = new Set(); const t = " " + s + " "; for (let i = 0; i < t.length - 2; i++) o.add(t.slice(i, i + 3)); return o; };
       const T = tri(termo); const st = computeStock();
-      const viz = Object.values(S.items).map(it => { const A = tri(normName(it.descricao).split(" ").slice(0, 3).join(" ")); let k = 0; T.forEach(g => { if (A.has(g)) k++; }); return {it, sc:k / Math.max(T.size, 1)}; }).filter(x => x.sc >= 0.5).sort((a, b) => b.sc - a.sc).slice(0, 3);
+      const viz = Object.values(S.items).map(it => { const A = tri(normName(it.descricao).split(" ").slice(0, 3).join(" ")); let k = 0; T.forEach(g => { if (A.has(g)) k++; }); return {it, sc:k / Math.max(T.size, 1)}; }).filter(x => x.sc >= 0.65).sort((a, b) => b.sc - a.sc).slice(0, 3);
       if (viz.length) msg.sug = viz.map(x => `Quantos ${x.it.descricao.split(" ").slice(0, 2).join(" ").toLowerCase()} temos?`);
       return `**Não.** Não há “${esc(termo.toLowerCase())}” na reserva técnica hoje.${viz.length ? " Talvez você procure:" : ""}`;
     }
