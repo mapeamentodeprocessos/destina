@@ -4028,7 +4028,7 @@ function nluResponder(nl, msg) {
       return fecha();
     }
     case "pessoas": {
-      const sg = Object.entries(S.cfg.signatarios || {}).map(([r, x]) => `- ${esc(x.cargo)}: ${esc(x.nome)}`).join("\n");
+      const sg = ["PRA","REITORIA"].filter(r => (S.cfg.signatarios || {})[r]).map(r => `- Autorizador nível ${r === "PRA" ? 1 : 2}: ${esc(S.cfg.signatarios[r].nome)} (${esc(S.cfg.signatarios[r].cargo)})`).join("\n");
       return `**Quem autoriza**\n${sg}\n- Limite de alçada do autorizador de nível 1: ${BRL.format(S.cfg.limiteAlcada || 0)} (acima disso, assina também o de nível 2)`;
     }
     case "plano_detalhe": case "empenho_detalhe": case "tombamento": return null; // tratados pelas regras específicas
@@ -4290,7 +4290,7 @@ function localAnswerRegras(q, msg) {
   }
   // h) usuários, signatários e papéis
   if (/USUARIO|SIGNATARI|QUEM ASSINA|QUEM AUTORIZA|ADMINISTRADOR|EQUIPE|PERFIS|PAPEIS/.test(n)) {
-    const sg = Object.entries(S.cfg.signatarios || {}).map(([r, x]) => `- ${esc(x.cargo)}: ${esc(x.nome)}`).join("\n");
+    const sg = ["PRA","REITORIA"].filter(r => (S.cfg.signatarios || {})[r]).map(r => `- Autorizador nível ${r === "PRA" ? 1 : 2}: ${esc(S.cfg.signatarios[r].nome)} (${esc(S.cfg.signatarios[r].cargo)})`).join("\n");
     const us = (S.perfisList || []).filter(p => p.aprovado);
     return "**Signatários**\n" + sg + `\n- Limite de alçada do autorizador de nível 1: ${BRL.format(S.cfg.limiteAlcada || 0)}` + (us.length ? "\n\n**Usuários aprovados**\n" + lista(us, p => `- ${esc(p.nome || p.email)}: ${esc(p.papeis.map(r => ROLES[r] ? ROLES[r].label : r).join(", "))}`, 15) : "");
   }
