@@ -788,7 +788,7 @@ function docPayload(p) {
 const R = () => S.role;
 const has = (...rs) => rs.includes(R());
 const can = {
-  createPlan: () => has("PATRIMONIO","FORMALIZACAO","ADMIN"),
+  createPlan: () => has("PATRIMONIO","ALMOXARIFADO","ADMIN"), // via de regra o plano nasce da decisão da Reitoria/PRA; DIPA e Almoxarifado também podem iniciar
   editItems: () => has("PATRIMONIO","ALMOXARIFADO","ADMIN"),
   formalize: () => has("FORMALIZACAO","ADMIN"),
   separate: () => has("ALMOXARIFADO","ADMIN"),
@@ -1856,7 +1856,7 @@ function exportCSV() {
 // ---------- PLANOS ----------
 // ---------- rastreio do plano (estilo "acompanhe seu pedido") ----------
 const TRK = [
-  {k:"reg", l:"Registrado", ic:"plus", st:["RASCUNHO"]},
+  {k:"reg", l:"Iniciado", ic:"plus", st:["RASCUNHO"]},
   {k:"form", l:"Formalização", ic:"planos", st:["INSTRUCAO"]},
   {k:"aut", l:"Autorização", ic:"shield", st:["AUTORIZACAO"]},
   {k:"sep", l:"Separação", ic:"box", st:["AUTORIZADO","SEPARACAO"]},
@@ -1873,6 +1873,13 @@ function planEta(p) {
 }
 const fmtLongo = t => new Date(t).toLocaleDateString("pt-BR", {day:"numeric", month:"long"});
 const fmtSemana = t => new Date(t).toLocaleDateString("pt-BR", {weekday:"long"});
+function planOrigem(p) {
+  const d = detList().find(x => x.planoId === p.id);
+  if (d) { const sg = S.cfg.signatarios[d.papel] || {}; return {decisao:true, txt:`decisão ${d.papel === "REITORIA" ? "da" : "do"} ${sg.cargo || d.papel}${sg.nome ? " " + sg.nome : ""}`}; }
+  if (/^Destinação determinada por decisão/.test(p.justificativa || "")) return {decisao:true, txt:"decisão da autoridade"};
+  const ev = (p.eventos || [])[0]; const r = ev && ROLES[ev.role] ? ROLES[ev.role].label : "";
+  return {decisao:false, txt:r ? `iniciativa ${/^(Almox|Divis)/.test(r) ? (r.startsWith("Almox") ? "do " : "da ") : "de "}${r}` : ""};
+}
 function planTrkInfo(p) {
   const stopped = ["INDEFERIDO","CANCELADO"].includes(p.status);
   const lastStage = (p.etapas || []).filter(e => STAGES.includes(e.s)).slice(-1)[0];
@@ -1880,8 +1887,8 @@ function planTrkInfo(p) {
   const quem = (nextSigner(p) || []).map(r => (S.cfg.signatarios[r] || {}).nome || (S.cfg.signatarios[r] || {}).cargo).join(" e ");
   const late = isLate(p), eta = planEta(p);
   const msg = {
-    RASCUNHO:["Plano registrado", p.devolucao ? "Voltou para ajustes antes de seguir para a formalização." : "O plano está sendo montado e seguirá para a formalização."],
-    INSTRUCAO:["Em formalização", "A Formalização está preparando o processo e o termo de autorização."],
+    RASCUNHO:["Plano iniciado", p.devolucao ? "Voltou para ajustes antes de seguir para a formalização." : `Iniciado por ${planOrigem(p).txt || "registro no sistema"}. Segue para a formalização.`],
+    INSTRUCAO:["Em formalização", `${planOrigem(p).decisao ? "Iniciado por " + planOrigem(p).txt + ". " : ""}A Formalização está preparando o processo e o termo de autorização.`],
     AUTORIZACAO:["Aguardando autorização", quem ? `O termo aguarda a assinatura de ${quem}.` : "O termo aguarda assinatura."],
     AUTORIZADO:["Autorizado", "Destinação autorizada. O almoxarifado vai separar os bens."],
     SEPARACAO:["Em separação", "Os bens estão sendo separados e conferidos no almoxarifado."],
@@ -1908,7 +1915,7 @@ function planTrack(p) {
   const evs = (p.eventos || []).slice().reverse();
   const evRow = (ev, i) => { const d = new Date(ev.at); return `<div class="trk-ev ${i === 0 ? "now" : ""}"><div class="t"><b>${d.toLocaleDateString("pt-BR", {day:"2-digit", month:"short"}).replace(".", "")}</b>${d.toLocaleTimeString("pt-BR", {hour:"2-digit", minute:"2-digit"})}</div><div class="o"></div><div class="x">${esc(ev.msg)}<small>${esc(nameOf(ev.by))}${ev.role && ROLES[ev.role] ? " · " + esc(ROLES[ev.role].label) : ""}</small></div></div>`; };
   return `<section class="trk ${I.tom}" aria-label="Acompanhamento do plano">
-    <div class="trk-h"><div><div class="k">Destino: ${esc(p.unidade)} · ${plural(planQtd(p), "bem", "bens")}</div><h2>${esc(I.titulo)}</h2><p>${esc(I.texto)}</p></div>${eta ? `<div class="trk-eta">${eta}</div>` : ""}</div>
+    <div class="trk-h"><div><div class="k">Destino: ${esc(p.unidade)} · ${plural(planQtd(p), "bem", "bens")}${planOrigem(p).txt ? " · por " + esc(planOrigem(p).txt) : ""}</div><h2>${esc(I.titulo)}</h2><p>${esc(I.texto)}</p></div>${eta ? `<div class="trk-eta">${eta}</div>` : ""}</div>
     <div class="trk-bar" role="list">${bar}</div>
     ${evs.length ? `<div class="trk-tl"><h3>Histórico</h3>${evs.slice(0, 3).map(evRow).join("")}${evs.length > 3 ? `<details><summary>Ver todo o histórico (${evs.length})</summary>${evs.slice(3).map((e, i) => evRow(e, i + 3)).join("")}</details>` : ""}</div>` : ""}
   </section>`;
@@ -1952,7 +1959,7 @@ function vPlanos() {
   plans.sort((a, b) => b.criadoEm - a.criadoEm);
   const filt = [["ativos","Em andamento"],["concluidos","Entregues"],["historico","Histórico"],["encerrados","Indeferidos e cancelados"],["todos","Todos"]];
   const extra = STAGES.includes(u.planSt) ? `<button aria-pressed="true">${ST[u.planSt].l}</button>` : "";
-  return `<div class="page-h"><div><h1>Planos de destinação</h1><p>Cada plano reúne os bens destinados a uma unidade e percorre o trilho: instrução documental, autorização, separação e entrega com termo de responsabilidade.</p></div>
+  return `<div class="page-h"><div><h1>Planos de destinação</h1><p>Via de regra, o plano nasce da decisão da Reitoria ou da Pró-Reitoria de Administração; a Divisão de Patrimônio e o Almoxarifado também podem iniciá-lo. Depois segue o trilho: formalização, autorização, separação e entrega com termo de responsabilidade.</p></div>
     <div class="r"><div class="seg" role="group" aria-label="Visualização"><button aria-pressed="${u.planView === "lista"}" data-act="pview" data-k="lista">Lista</button><button aria-pressed="${u.planView === "quadro"}" data-act="pview" data-k="quadro">Quadro</button></div>${can.createPlan() ? `<button class="btn primary" data-act="new-plan">${ic("plus")}Novo plano</button>` : ""}</div></div>
   ${detHtml}
   <div class="toolbar"><input class="inp q" type="search" placeholder="Buscar por número, unidade, processo ou finalidade…" value="${esc(u.planQ)}" data-ui="planQ" aria-label="Buscar planos">
@@ -2746,7 +2753,7 @@ function detCard() {
   return `<section class="card" style="margin-bottom:16px"><div class="card-h"><h3>Determinações de destinação</h3><span class="sub">${ab.length ? plural(ab.length, "aberta aguardando plano", "abertas aguardando plano") : "nenhuma aberta"}</span>${meus ? `<span class="sp"></span><button class="btn sm primary" data-act="det-nova">${ic("plus")}Determinar destinação</button>` : ""}</div>
     ${ab.length ? `<div class="list">${ab.map(d => `<div class="li" style="grid-template-columns:minmax(0,1fr) auto"><div class="it-t"><b>${esc(d.numero)} · ${esc(d.unidade)}</b><small>${d.itens.map(i => `${fmtN(i.quantidade)} × ${esc(i.descricao)}`).join("; ")}<br>Decisão: ${esc(detCargo(d))}, em ${fmtD(d.criadoEm)}${d.origem === "chat" ? " · pelo assistente" : ""}${d.observacao ? " · " + esc(d.observacao) : ""}</small></div>
       <div class="row" style="gap:6px">${can.createPlan() ? `<button class="btn sm primary" data-act="det-plano" data-id="${d.id}">Montar plano</button>` : ""}${(d.autor === S.me.id || R() === "ADMIN") ? `<button class="btn sm ghost" data-act="det-cancelar" data-id="${d.id}">Cancelar</button>` : ""}</div></div>`).join("")}</div>`
-    : `<div class="card-b"><p class="small muted">Diga ao assistente, por exemplo: “destinar 30 cadeiras para o CCS”. A determinação aparece aqui para a Formalização montar o plano.</p></div>`}</section>`;
+    : `<div class="card-b"><p class="small muted">Diga ao assistente, por exemplo: “destinar 30 cadeiras para o CCS”. O plano é iniciado na hora e a Formalização recebe o aviso para formalizar.</p></div>`}</section>`;
 }
 function detMontarPlano(id) {
   const d = S.determ[id]; if (!d) return;
@@ -2795,7 +2802,7 @@ function chatDecisao(q, msg) {
   if (verboDest.test(n) && (E.mat || E.cat)) {
     if (!E.qtd) { const W = {UM:1, UMA:1, DOIS:2, DUAS:2, TRES:3, QUATRO:4, CINCO:5, SEIS:6, SETE:7, OITO:8, NOVE:9, DEZ:10, VINTE:20, TRINTA:30, QUARENTA:40, CINQUENTA:50, CEM:100}; const ws = cru, alvo = normName((E.mat ? E.mat.txt : E.cat)).split(" ")[0], ix = ws.findIndex(x => x.startsWith(alvo.slice(0, 3))); if (ix > 0 && NUMW[ws[ix - 1]]) E.qtd = NUMW[ws[ix - 1]]; }
     if (canDeterminar() || can.createPlan()) return chatDeterminarMontar({mat:E.mat, cat:E.cat, qtd:E.qtd, uni:E.uni}, msg);
-    return "A destinação é determinada pela Reitoria ou pela Pró-Reitoria de Administração. Pelo seu perfil, posso mostrar o saldo e os planos.";
+    return "Quem inicia a destinação é, via de regra, a Reitoria ou a Pró-Reitoria de Administração (a Divisão de Patrimônio e o Almoxarifado também podem). Pelo seu perfil, posso mostrar o saldo e acompanhar os planos.";
   }
   // autorizar / indeferir pelo chat
   const autoriza = /^(EU )?(AUTORIZ\w*|ASSIN\w*|APROV\w*|DEFIR\w*|DEFERIR|PODE AUTORIZAR|QUERO AUTORIZAR|QUERO ASSINAR|LIBERO|OK PARA)\b/.test(n);
