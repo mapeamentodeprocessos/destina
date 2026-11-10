@@ -3290,7 +3290,7 @@ function nluMaterial(n, excl) {
     const cat = CATS.find(c => normName(c) === ph || normName(c).startsWith(ph) && ph.length >= 5);
     if (cat && L === 1) return {cat, txt:cont.slice(i, i + L).join(" ")};
     const its = Object.values(S.items).filter(it => matchText(it.descricao + " " + (it.marca || "") + " " + (it.modelo || ""), ph));
-    if (its.length) return {its, txt:cont.slice(i, i + L).join(" "), termo:ph};
+    if (its.length) { const resto = [...cont.slice(0, i), ...cont.slice(i + L)].filter(w => w.length > 2); return {its, txt:cont.slice(i, i + L).join(" "), termo:ph, resto, frase:cont.join(" ")}; }
   }
   return null;
 }
@@ -3356,7 +3356,9 @@ function nluResponder(nl, msg) {
       if (!matIds) return nluResponder({...nl, intent:"est_total"}, msg);
       const L = its.filter(i => matIds.has(i.id)).sort((a, b) => st[b.id].disp - st[a.id].disp);
       const T = L.reduce((a, i) => ({d:a.d + Math.max(0, st[i.id].disp), g:a.g + st[i.id].saldo, c:a.c + st[i.id].comp + st[i.id].res, e:a.e + st[i.id].ent, v:a.v + Math.max(0, st[i.id].disp) * (i.valorUnitario || 0)}), {d:0, g:0, c:0, e:0, v:0});
-      const simNao = /^(TEM|TEMOS|AINDA TEM|EXISTE|EXISTEM|HA|POSSUI|POSSUIMOS|TERIA|TERIAMOS|SOBROU|SOBRA)\b/.test(nl.n) ? (T.d > 0 ? "**Sim.** " : "**Não** há disponíveis agora. ") : "";
+      const parcial = E.mat && E.mat.resto && E.mat.resto.length && !E.uni;
+      if (parcial) linhas.push(`**Não** encontrei “${esc(E.mat.frase.toLowerCase())}” na reserva. O mais próximo é ${esc(rotMat)}:`);
+      const simNao = parcial ? "" : /^(TEM|TEMOS|AINDA TEM|EXISTE|EXISTEM|HA|POSSUI|POSSUIMOS|TERIA|TERIAMOS|SOBROU|SOBRA)\b/.test(nl.n) ? (T.d > 0 ? "**Sim.** " : "**Não** há disponíveis agora. ") : "";
       linhas.push(`${simNao}Em ${esc(rotMat)}: **${fmtN(T.d)} disponíveis** para destinar, de ${fmtN(T.g)} sob guarda${T.c ? ` (${fmtN(T.c)} já comprometidos em planos)` : ""}${T.v ? ` · ${BRL.format(T.v)}` : ""}.`);
       linhas.push(lista(L, i => `- ${esc(i.descricao)}: **${fmtN(Math.max(0, st[i.id].disp))}** disponíveis${i.localizacao ? " · " + esc(i.localizacao) : ""}`));
       const par = L.filter(i => st[i.id].disp > 0 && st[i.id].age && daysSince(st[i.id].age) > 180); if (par.length) atencao.push(`${plural(par.length, "material está", "materiais estão")} com saldo parado há mais de 6 meses.`);
@@ -3634,7 +3636,7 @@ function localAnswer(q, msg) {
     if (termo) {
       const tri = s => { const o = new Set(); const t = " " + s + " "; for (let i = 0; i < t.length - 2; i++) o.add(t.slice(i, i + 3)); return o; };
       const T = tri(termo); const st = computeStock();
-      const viz = Object.values(S.items).map(it => { const A = tri(normName(it.descricao).split(" ").slice(0, 3).join(" ")); let k = 0; T.forEach(g => { if (A.has(g)) k++; }); return {it, sc:k / Math.max(T.size, 1)}; }).filter(x => x.sc >= 0.3).sort((a, b) => b.sc - a.sc).slice(0, 3);
+      const viz = Object.values(S.items).map(it => { const A = tri(normName(it.descricao).split(" ").slice(0, 3).join(" ")); let k = 0; T.forEach(g => { if (A.has(g)) k++; }); return {it, sc:k / Math.max(T.size, 1)}; }).filter(x => x.sc >= 0.5).sort((a, b) => b.sc - a.sc).slice(0, 3);
       if (viz.length) msg.sug = viz.map(x => `Quantos ${x.it.descricao.split(" ").slice(0, 2).join(" ").toLowerCase()} temos?`);
       return `**Não.** Não há “${esc(termo.toLowerCase())}” na reserva técnica hoje.${viz.length ? " Talvez você procure:" : ""}`;
     }
