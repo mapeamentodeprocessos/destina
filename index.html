@@ -2626,7 +2626,13 @@ function formDeterminacao(pre) {
 function chatDecisao(q, msg) {
   let nl; try { nl = nluEntender(q); } catch (e) { return null; }
   const n = nl.n || "", E = nl.ents, act = a => { if (actionAllowed(a)) msg.actions.push(a); };
-  // continuação de uma determinação incompleta ("para o CCS", "30")
+  const NUMW = {UM:1, UMA:1, DOIS:2, DUAS:2, TRES:3, QUATRO:4, CINCO:5, SEIS:6, SETE:7, OITO:8, NOVE:9, DEZ:10, ONZE:11, DOZE:12, QUINZE:15, VINTE:20, TRINTA:30, QUARENTA:40, CINQUENTA:50, CEM:100};
+  const cru = normName(q).split(" ");
+  // continuação de uma determinação incompleta ("para o CCS", "30", "cinco", "Biblioteca Central")
+  if (AS.slot && n.split(" ").length <= 12 && !E.uni && !E.qtd && !E.mat) {
+    if (!AS.slot.qtd && cru.length <= 3) { const w = cru.find(x => NUMW[x]); if (w) E.qtd = NUMW[w]; }
+    if (!E.qtd && AS.slot.qtd && !AS.slot.uni) { try { const u = nluUnidade("PARA " + n, q); if (u) E.uni = u.u; } catch (e) {} }
+  }
   if (AS.slot && n.split(" ").length <= 12 && (E.uni || E.qtd || E.mat) && !/^(AUTORIZ|ASSIN|INDEFER)/.test(n)) {
     const s = AS.slot; const escolhaExata = Object.values(S.items).some(i => normName(i.descricao) === normName(q.trim()));
     if (E.uni) s.uni = E.uni; if (E.qtd && !escolhaExata) s.qtd = E.qtd;
@@ -2635,7 +2641,7 @@ function chatDecisao(q, msg) {
   }
   const verboDest = /^(QUERO |GOSTARIA DE |POR FAVOR |PODE |PODERIA |VAMOS |PRECISO |PRECISAMOS |DEVEMOS )?(DESTINAR|DESTINE|DESTINA|DETERMINO|DETERMINE|DETERMINAR|MANDE|MANDAR|ENVIE|ENVIAR|ENCAMINHE|ENCAMINHAR|LIBERE|LIBERAR|REPASSE|REPASSAR|DOE|DOAR|ENTREGUE|ENTREGAR)\b|\b(FAZER|FACA|REALIZAR|ABRIR|INICIAR) (UMA |A )?DESTINACAO\b|\bQUERO (UMA |FAZER (UMA )?)?DESTINACAO\b|\bDESTINACAO DE\b/;
   if (verboDest.test(n) && (E.mat || E.cat)) {
-    if (!E.qtd) { const W = {UM:1, UMA:1, DOIS:2, DUAS:2, TRES:3, QUATRO:4, CINCO:5, SEIS:6, SETE:7, OITO:8, NOVE:9, DEZ:10, VINTE:20, TRINTA:30, QUARENTA:40, CINQUENTA:50, CEM:100}; const ws = n.split(" "), alvo = (E.mat ? E.mat.txt : E.cat.toUpperCase()).split(" ")[0], ix = ws.indexOf(alvo); if (ix > 0 && W[ws[ix - 1]]) E.qtd = W[ws[ix - 1]]; }
+    if (!E.qtd) { const W = {UM:1, UMA:1, DOIS:2, DUAS:2, TRES:3, QUATRO:4, CINCO:5, SEIS:6, SETE:7, OITO:8, NOVE:9, DEZ:10, VINTE:20, TRINTA:30, QUARENTA:40, CINQUENTA:50, CEM:100}; const ws = cru, alvo = normName((E.mat ? E.mat.txt : E.cat)).split(" ")[0], ix = ws.findIndex(x => x.startsWith(alvo.slice(0, 3))); if (ix > 0 && NUMW[ws[ix - 1]]) E.qtd = NUMW[ws[ix - 1]]; }
     if (canDeterminar() || can.createPlan()) return chatDeterminarMontar({mat:E.mat, cat:E.cat, qtd:E.qtd, uni:E.uni}, msg);
     return "A destinação é determinada pela Reitoria ou pela Pró-Reitoria de Administração. Pelo seu perfil, posso mostrar o saldo e os planos.";
   }
