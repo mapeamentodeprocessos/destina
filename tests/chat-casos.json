@@ -482,6 +482,27 @@
      ]
     }
    ]
+  },
+  {
+   "nome": "Perguntas de saldo geral não viram item inexistente",
+   "persona": "u_reit",
+   "msgs": [
+    {
+     "q": "quanto temos disponível para destinar?",
+     "tem": [
+      "disponíveis|disponível"
+     ],
+     "nao": [
+      "Não há temos"
+     ]
+    },
+    {
+     "q": "tem algum risco de perder garantia?",
+     "nao": [
+      "Não há risco"
+     ]
+    }
+   ]
   }
  ]
 }
