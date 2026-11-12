@@ -673,6 +673,101 @@
      ]
     }
    ]
+  },
+  {
+   "nome": "Reporte 12/11: empenhos (campos da planilha), não o total da reserva",
+   "persona": "u_adm",
+   "msgs": [
+    {
+     "q": "quantos empenhos temos disponíveis ?",
+     "tem": [
+      "empenhos",
+      "disponíveis de"
+     ],
+     "nao": [
+      "bens sob guarda"
+     ]
+    },
+    {
+     "q": "quais processos",
+     "tem": [
+      "processos"
+     ]
+    },
+    {
+     "q": "empenhos aguardando tombamento",
+     "tem": [
+      "tombamento"
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Saídas, entradas e atributos da planilha",
+   "persona": "u_adm",
+   "msgs": [
+    {
+     "q": "quais saídas tivemos?",
+     "tem": [
+      "saídas",
+      "mais recentes"
+     ]
+    },
+    {
+     "q": "qual a última saída?",
+     "comeca": "A última saída foi em"
+    },
+    {
+     "q": "para onde foram os microscópios?",
+     "tem": [
+      "Saídas de",
+      "CCS"
+     ]
+    },
+    {
+     "q": "quantas entradas tem a planilha?",
+     "tem": [
+      "22 entradas"
+     ]
+    },
+    {
+     "q": "lista de materiais",
+     "tem": [
+      "22 materiais"
+     ]
+    },
+    {
+     "q": "quanto custou tudo?",
+     "tem": [
+      "R$"
+     ]
+    },
+    {
+     "q": "valor médio da cadeira",
+     "tem": [
+      "Valor médio"
+     ]
+    },
+    {
+     "q": "qual a especificação do notebook?",
+     "tem": [
+      "Notebook"
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Número escolhe o modelo, não é quantidade",
+   "persona": "u_reit",
+   "msgs": [
+    {
+     "q": "quero mandar 2 ar condicionado de 24 mil btus para o CCEN",
+     "comeca": "**36 disponíveis**",
+     "tem": [
+      "2 × Ar-condicionado split inverter 24.000 BTUs"
+     ]
+    }
+   ]
   }
  ]
 }

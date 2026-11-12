@@ -38,7 +38,10 @@
     empenhos: ["empenhos aguardando tombamento", "o que falta tombar", "situação dos empenhos", "empenhos recebidos"],
     saudacao: ["oi", "olá", "bom dia", "boa tarde", "boa noite", "olá, tudo bem?", "oi assistente", "e aí"],
     cortesia: ["obrigado", "valeu", "muito obrigada", "agradeço", "obrigado pela ajuda"],
-    adiar: ["deixa pra depois", "vejo depois", "agora não", "fica pra depois", "desconsidere"]
+    adiar: ["deixa pra depois", "vejo depois", "agora não", "fica pra depois", "desconsidere"],
+    campos: ["quantos empenhos temos", "quais empenhos temos disponíveis", "quais processos", "empenho das {m}", "quais pregões", "quais requisições", "qual empenho tem mais saldo", "empenhos com saldo"],
+    saidas: ["quais saídas tivemos", "qual a última saída", "para onde foram os {m}", "saídas de 2026", "lista das saídas"],
+    atributos: ["qual a especificação do {m}", "valor médio do {m}", "onde fica o {m}", "quando chegou o {m}", "qual o preço do {m}"]
   };
   const OK = {
     saldo: (r, c) => /dispon/i.test(r) && !/^Não há temos/.test(r),
@@ -54,7 +57,10 @@
     empenhos: r => /empenho|tombament/i.test(r),
     saudacao: r => r.length < 140 && !/PD |pendênci|disponíve/i.test(r),
     cortesia: r => r.length < 140 && !/PD |disponíve/i.test(r),
-    adiar: r => /depois|desconsider|deixei de lado|tudo bem|combinado/i.test(r)
+    adiar: r => /depois|desconsider|deixei de lado|tudo bem|combinado/i.test(r),
+    campos: r => /empenho|processo|pregão|requisiç/i.test(r) && !/bens sob guarda/.test(r),
+    saidas: r => /saída|Saídas|Ainda não saiu|Nenhuma saída/.test(r),
+    atributos: r => /especifica|Valor médio|fica em|Entradas de|não têm valor|sem especificação/i.test(r)
   };
   const QUEBRADO = /\bundefined\b|NaN|\[object|\bnull\b|&quot;|&amp;/;
   const NIVEIS = ["limpo", "sem acento", "abreviado", "1 erro de digitação", "2+ erros de digitação"];

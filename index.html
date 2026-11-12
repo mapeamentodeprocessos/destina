@@ -2852,6 +2852,7 @@ function formDeterminacao(pre) {
 // ---------- pelo chat: determinar, autorizar e indeferir ----------
 function chatDecisao(q, msg) {
   let nl; try { nl = nluEntender(q); } catch (e) { return null; }
+  refinarModelo(nl, q);
   const n = nl.n || "", E = nl.ents, act = a => { if (actionAllowed(a)) msg.actions.push(a); };
   const NUMW = {UM:1, UMA:1, DOIS:2, DUAS:2, TRES:3, QUATRO:4, CINCO:5, SEIS:6, SETE:7, OITO:8, NOVE:9, DEZ:10, ONZE:11, DOZE:12, QUINZE:15, VINTE:20, TRINTA:30, QUARENTA:40, CINQUENTA:50, CEM:100};
   const cru = normName(q).split(" ");
@@ -2872,7 +2873,7 @@ function chatDecisao(q, msg) {
     if (!E.qtd) { const W = {UM:1, UMA:1, DOIS:2, DUAS:2, TRES:3, QUATRO:4, CINCO:5, SEIS:6, SETE:7, OITO:8, NOVE:9, DEZ:10, VINTE:20, TRINTA:30, QUARENTA:40, CINQUENTA:50, CEM:100}; const ws = cru, alvo = normName((E.mat ? E.mat.txt : E.cat)).split(" ")[0], ix = ws.findIndex(x => x.startsWith(alvo.slice(0, 3))); if (ix > 0 && NUMW[ws[ix - 1]]) E.qtd = NUMW[ws[ix - 1]]; }
     return chatDeterminarMontar({mat:E.mat, cat:E.cat, qtd:E.qtd, uni:E.uni}, msg);
   }
-  const DOMINIO = /^(BENS?|ITENS?|ITEM|MATERIA(L|IS)|PLANOS?|ENTREGAS?|EMPENHOS?|UNIDADES?|PENDENCIAS?|TERMOS?|PROPOSTAS?|DECISO(ES)?|DECISAO|USUARIOS?|PERFIS?|CATEGORIAS?|LOTES?|TOMBAMENTOS?|DIAS|PRAZOS?|VALOR|DINHEIRO|RESERVA|SALDO|ESTOQUE|AUTORIZAC\w*|DESTINAC\w*|PROCESSOS?|DOCUMENTOS?|NOVIDADES?|COISAS?|ALGO|ALGUEM|NADA|ATRASOS?|ATRASAD\w*|PROBLEMAS?|ERROS?|ALERTAS?|AVISOS?|URGEN\w*|TEMPO|COMO|QUE|O QUE|QUANT\w*|PRA MIM|PARA MIM|DUVIDAS?|PERGUNTAS?|AJUDA|NOTICIAS?|MAIS|ASSINATURAS?|ASSINAR|DEMANDAS?|PEDIDOS?|SOLICITAC\w*|NOTIFICAC\w*|MENSAGE\w*|EMAILS?|E MAILS?)\b/;
+  const DOMINIO = /^(ENTRADAS?|SAIDAS?|LOTES|FOTOS?|FORNECEDOR\w*|PROCESSOS?|PREGO\w*|PREGAO|REQUISIC\w*|BENS?|ITENS?|ITEM|MATERIA(L|IS)|PLANOS?|ENTREGAS?|EMPENHOS?|UNIDADES?|PENDENCIAS?|TERMOS?|PROPOSTAS?|DECISO(ES)?|DECISAO|USUARIOS?|PERFIS?|CATEGORIAS?|LOTES?|TOMBAMENTOS?|DIAS|PRAZOS?|VALOR|DINHEIRO|RESERVA|SALDO|ESTOQUE|AUTORIZAC\w*|DESTINAC\w*|PROCESSOS?|DOCUMENTOS?|NOVIDADES?|COISAS?|ALGO|ALGUEM|NADA|ATRASOS?|ATRASAD\w*|PROBLEMAS?|ERROS?|ALERTAS?|AVISOS?|URGEN\w*|TEMPO|COMO|QUE|O QUE|QUANT\w*|PRA MIM|PARA MIM|DUVIDAS?|PERGUNTAS?|AJUDA|NOTICIAS?|MAIS|ASSINATURAS?|ASSINAR|DEMANDAS?|PEDIDOS?|SOLICITAC\w*|NOTIFICAC\w*|MENSAGE\w*|EMAILS?|E MAILS?)\b/;
   const perguntaSaldo = n.match(/^(?:QUANTOS?|QUANTAS?) (.+?) (?:TEMOS|TEM|HA|EXISTEM|EXISTE|SOBRARAM|RESTAM|DISPONIVE\w*)\b/) || n.match(/^QUANTO (?:TEMOS|TEM|HA) DE (.+?)$/) || n.match(/^(?:TEM|TEMOS|HA|EXISTE|EXISTEM) (?:ALGUM |ALGUMA |ALGUNS |ALGUMAS )?(.+?)(?: DISPONIVE\w*| NA RESERVA| EM ESTOQUE| SOBRANDO)?$/) || n.match(/^(?:SALDO|ESTOQUE|DISPONIBILIDADE) (?:DE|DO|DA|DOS|DAS) (.+?)$/) || n.match(/^QUAL (?:O|A) (?:SALDO|ESTOQUE|DISPONIBILIDADE) (?:DE|DO|DA|DOS|DAS) (.+?)$/);
   const VAZIO = /^(TEMOS|TEM|HA|EXISTE|EXISTEM|DISPONIVE\w*|PARA|DE|DO|DA|AINDA|AGORA|HOJE|NO TOTAL|AO TODO|NA RESERVA|EM ESTOQUE)( |$)/;
   const tentarCorrigir = (base, termoN) => { if (AS._fuzzy) return null;
@@ -4120,7 +4121,7 @@ function conversaNormal(n, msg) {
   const pend = () => { try { const k = (tIndicadores().minhas_pendencias || []).length; return k ? ` Você tem **${plural(k, "pendência", "pendências")}** no seu perfil.` : ""; } catch (e) { return ""; } };
   const R = [
     // cumprimentos
-    [/^(OI+|OLA|OPA|E AI|EAI|HELLO|HEY|SALVE|BOM DIA|BOA TARDE|BOA NOITE|SAUDACOES)\b/, () => {
+    [/^(OI+E?|OLA+|OA|OL|OPA|E AI|EAI|HELLO|HEY|SALVE|BOM DIA|BOA TARDE|BOA NOITE|SAUDACOES)\b/, () => {
       const pediu = /BOM DIA/.test(n) ? "dia" : /BOA TARDE/.test(n) ? "tarde" : /BOA NOITE/.test(n) ? "noite" : "";
       const real = hora < 5 ? "noite" : hora < 12 ? "dia" : hora < 18 ? "tarde" : "noite";
       const nota = pediu && pediu !== real ? ` (por aqui já é ${real === "dia" ? "manhã" : real})` : "";
@@ -4156,7 +4157,7 @@ function conversaNormal(n, msg) {
     [/\b(PREVISAO DO TEMPO|VAI CHOVER|CLIMA HOJE|FUTEBOL|JOGO DE HOJE|RECEITA DE|PIADA|CONTA UMA PIADA|CAPITAL DA|QUEM GANHOU|NOTICIAS?)\b/, () => "Isso foge do que eu sei: só tenho os dados do Destina (reserva técnica, planos, entregas e empenhos). Posso ajudar com algum desses?"],
   ];
   const CONV = ["AGORA","NAO","DEIXA","DEIXE","DEPOIS","FICA","OBRIGADO","OBRIGADA","AGRADECO","VALEU","BOM","BOA","TARDE","NOITE","OLA","TUDO","BEM","DESCONSIDERE","DESCONSIDERA","VEJO","ESQUECE","CANCELA","IGNORE","PERFEITO","CERTO","COMBINADO","MUITO","TENHO","PRECISO","FAZER","HOJE","AJUDA","PARA","FICA","VEJO"];
-  if (n.split(" ").length <= 6) n = n.split(" ").map(w => { if (w.length < 3 || CONV.includes(w) || (w.length === 3 && !CONV.some(c => c.length === 4 && lev(w, c) === 1))) return w; let best = w, bd = w.length >= 7 ? 2 : 1; CONV.forEach(c => { const d = lev(w, c); if (d <= bd && Math.abs(c.length - w.length) <= 2) { best = c; bd = d - 0.5; } }); return best; }).join(" ");
+  if (n.split(" ").length <= 6) n = n.split(" ").map(w => { if (w.length < 3 || CONV.includes(w) || (w.length === 3 && !CONV.some(c => c.length === 4 && lev(w, c) === 1))) return w; let best = w, bd = w.length >= 6 ? 2 : 1; CONV.forEach(c => { const d = lev(w, c); if (d <= bd && Math.abs(c.length - w.length) <= 2) { best = c; bd = d - 0.5; } }); return best; }).join(" ");
   const curta = n.split(" ").length <= 9;
   if (/^(O )?(QUE|Q) (EU )?(TENHO|PRECISO|DEVO) (PARA |PRA |P |P\/ |DE |A )?(FAZER|HOJE|RESOLVER|ASSINAR)\b|^(MINHAS|MEUS) (TAREFAS|AFAZERES|PENDENCIAS)\b/.test(n)) { const r = nluResponder({q:n, n, mk:n, ents:{}, intent:"pendencias", score:1, rank:[], fixes:[]}, msg); if (r) return r; }
   if (curta && /\b(DEIX\w* (ISSO |ISTO |ESSE |ESSA )?(PRA|PARA|P) (DEPOIS|MAIS TARDE|AMANHA|OUTRA HORA|OUTRO DIA|SEGUNDA)|DEPOIS (EU )?(VEJO|RESOLVO|FACO|OLHO)|VEJO DEPOIS|FICA (PRA|PARA) DEPOIS|AGORA NAO|NAO AGORA|MAIS TARDE (EU )?(VEJO|RESOLVO)|NAO E PRIORIDADE|NAO E URGENTE)\b/.test(n)) { AS.slot = null; return CONV_ESCOLHE(["Tudo bem, fica para depois. Em que mais posso ajudar?", "Combinado, deixamos para depois. Precisa de mais alguma coisa?"]); }
@@ -4183,9 +4184,16 @@ function limparEnfeites(q) {
   let s = String(q).trim();
   const base = () => [...s].map(c => c.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()).join("");
   const INI = /^(uma duvida|uma pergunta|so uma pergunta|uma informacao|me diz(e)?|me diga|me fala|me conta|me responde|por favor|pfv|pf|preciso saber|gostaria de saber|quero saber|deixa eu ver|ei|hey|entao|e ai assistente|oi assistente|ola assistente|olha|escuta)\s*[,:;.!-]?\s+/;
+  const FRASES = ["uma duvida", "uma pergunta", "preciso saber", "gostaria de saber", "quero saber", "me diz", "me diga", "me fala", "por favor", "so uma pergunta"];
+  for (let k = 0; k < 4; k++) {
+    const b = base(); const ws = b.split(/\s+/);
+    for (const nw of [3, 2]) { if (ws.length <= nw) continue; const pre = ws.slice(0, nw).join(" ").replace(/[,:;!.-]+$/, ""); const f = FRASES.find(f => f.split(" ").length === nw && f !== pre && lev(pre, f) <= 2 && pre.length >= f.length - 2);
+      if (f) { s = [...s].slice(ws.slice(0, nw).join(" ").length).join("").replace(/^[\s,:;!.-]+/, "").trim(); break; } }
+  }
   for (let k = 0; k < 4; k++) {
     const b = base(); const m = b.match(INI);
     const w = b.split(/[\s,:;!-]+/)[0]; const ehAssist = w && w.length >= 8 && lev(w, "assistente") <= 2;
+    if (m && /^(ai|aí|hoje|rapidinho|por favor|pfv|ok|tudo bem|blz)?[\s!?.…]*$/.test(b.slice(m[0].length).trim())) break; // "oi assistente aí" é só o cumprimento
     if (m && b.length > m[0].length + 1) s = [...s].slice(m[0].length).join("").trim();
     else if (ehAssist && b.length > w.length + 2) s = [...s].slice(b.indexOf(w) + w.length).join("").replace(/^[\s,:;!.-]+/, "").trim();
     else break;
@@ -4193,6 +4201,138 @@ function limparEnfeites(q) {
   const FIM = /(\s*(por favor|pfv|rapidinho|ai|aí|hein|blz|beleza|ok|obrigad[oa])?\s*[!?.…]*)$/i;
   for (let k = 0; k < 3; k++) { const t = s.replace(/\s+(por favor|pfv|rapidinho|ai|aí|hein|blz)\s*[!?.…]*$/i, "").replace(/\s*[!?.…]{2,}$/, "?"); if (t === s || t.split(" ").length < 1) break; s = t; }
   return s || String(q);
+}
+// ---------- perguntas sobre os campos da planilha: empenho, processo, pregão, requisição, nota fiscal, fornecedor ----------
+function lotesComSaldo() { // cada entrada (lote) com o quanto ainda está disponível, consumindo pela ordem de chegada (FIFO)
+  const st = computeStock(), out = [];
+  for (const it of Object.values(S.items)) {
+    const s = st[it.id]; if (!s) continue; let usado = s.comp + s.res + s.ent, comp = s.comp + s.res;
+    lotsOf(it).slice().sort((a, b) => (a.data || 0) - (b.data || 0)).forEach(l => { const u = Math.min(l.qtd, usado); usado -= u; out.push({...l, it, disp:Math.max(0, l.qtd - u)}); });
+  }
+  return out;
+}
+const CAMPOS_PLAN = [
+  {k:"empenho", re:/\b(EMPENHOS?|NOTAS? DE EMPENHO|NES?)\b/, um:"empenho", varios:"empenhos"},
+  {k:"processo", re:/\bPROCESSOS?\b/, um:"processo", varios:"processos"},
+  {k:"pregao", re:/\bPREGO(ES)?\b|\bPREGAO\b|\bLICITAC\w*/, um:"pregão", varios:"pregões"},
+  {k:"requisicao", re:/\bREQUISIC\w*/, um:"requisição", varios:"requisições", fem:true},
+  {k:"nf", re:/\b(NOTAS? FISCA\w*|NFS?|NFE)\b/, um:"nota fiscal", varios:"notas fiscais", fem:true},
+  {k:"fornecedor", re:/\bFORNECEDOR\w*|\bEMPRESAS?\b|\bQUEM (FORNECEU|VENDEU)\b/, um:"fornecedor", varios:"fornecedores", doItem:true}
+];
+function respostaCampos(q, n, E, msg) {
+  const act = a => { if (actionAllowed(a)) msg.actions.push(a); };
+  if (/\b(TOMBA\w*|PLAQUET\w*|EMPLAQUET\w*|PATRIMONIA(R|DO|DOS))\b/.test(n)) return null; // empenhos do módulo de tombamento
+  const L = lotesComSaldo(); const val = v => String(v || "").trim();
+  // 1) um número específico citado: "empenho 2026NE000431", "processo 23074.123/2026-1"
+  const toks = (q.match(/[A-Za-z0-9][A-Za-z0-9.\/-]{3,}/g) || []).filter(t => /\d/.test(t) && t.replace(/\D/g, "").length >= 4 && !/^(19|20)\d\d$/.test(t) && !/^\d{1,3}\.000$/.test(t)).map(t => t.toUpperCase().replace(/[.\/-]/g, ""));
+  for (const t of toks) {
+    const hit = L.filter(l => ["empenho","processo","pregao","requisicao","nf"].some(k => val(l[k]) && val(l[k]).toUpperCase().replace(/[.\/-]/g, "").includes(t)));
+    const sai = Object.values(S.plans).filter(p => p.processo && p.processo.toUpperCase().replace(/[.\/-]/g, "").includes(t));
+    if (!hit.length && !sai.length) continue;
+    const linhas = [];
+    if (hit.length) { const k = ["empenho","processo","pregao","requisicao","nf"].find(k => hit.some(l => val(l[k]).toUpperCase().replace(/[.\/-]/g, "").includes(t))); const c = CAMPOS_PLAN.find(c => c.k === k);
+      linhas.push(`**${c.um[0].toUpperCase() + c.um.slice(1)} ${esc(val(hit[0][k]))}**: ${plural(hit.length, "entrada", "entradas")}, ${fmtN(hit.reduce((a, l) => a + l.qtd, 0))} bens recebidos, **${fmtN(hit.reduce((a, l) => a + l.disp, 0))} ainda disponíveis**${hit.some(l => l.vu > 0) ? ` · ${BRL.format(hit.reduce((a, l) => a + l.qtd * (l.vu || 0), 0))}` : ""}.`);
+      linhas.push(hit.slice(0, 8).map(l => `- ${fmtD(l.data)} · ${esc(l.it.descricao)}: ${fmtN(l.qtd)} recebidos, ${fmtN(l.disp)} disponíveis${l.vu ? ` · ${BRL.format(l.vu)} un.` : ""}${val(l.empenho) && k !== "empenho" ? ` · empenho ${esc(l.empenho)}` : ""}${val(l.processo) && k !== "processo" ? ` · processo ${esc(l.processo)}` : ""}`).join("\n"));
+      if (hit.length === 1 || new Set(hit.map(l => l.it.id)).size === 1) act({tipo:"abrir_material", material_id:hit[0].it.id, rotulo:"Abrir " + hit[0].it.descricao.slice(0, 40)}); }
+    if (sai.length) { linhas.push(`${hit.length ? "Também " : ""}**${plural(sai.length, "destinação", "destinações")}** com esse processo:`); linhas.push(sai.slice(0, 6).map(p => `- ${esc(p.numero)} · ${esc(p.unidade)} · ${fmtN(planQtd(p))} bens · ${esc(ST[p.status].l)}${p.criadoEm ? " · " + fmtD(p.criadoEm) : ""}`).join("\n")); }
+    return linhas.join("\n");
+  }
+  // 2) pergunta sobre um campo: "quantos empenhos temos disponíveis", "empenho das cadeiras", "quais fornecedores"
+  const nRaw = normName(q).replace(/[?!.,;:()]/g, " ").replace(/\s+/g, " ");
+  const c = CAMPOS_PLAN.find(c => c.re.test(nRaw) || c.re.test(n)); if (!c) return respostaPlanilha(q, nRaw, E, msg);
+  if (c.k === "processo" && /\b(SAIDAS?|SAIU|ENTREGAS?|ENTREGUE|DESTINAC\w*|DESTINAD\w*|ENVIAD\w*)\b/.test(nRaw)) {
+    let X = Object.values(S.plans).filter(p => p.status === "ENTREGUE" || p.legado);
+    if (E.uni) X = X.filter(p => normName(p.unidade).includes(normName(E.uni.name).split(" (")[0].slice(0, 12)) || normName(p.unidade).includes("(" + normName(uSigla(E.uni) || "") + ")") || (p.unidadeCode && p.unidadeCode === E.uni.code));
+    if (!X.length) return `Nenhuma saída${E.uni ? " para " + esc(E.uni.name) : ""} encontrada.`;
+    return `**Processos das saídas**${E.uni ? " para " + esc(E.uni.name) : ""}:\n` + X.sort((a, b) => (b.criadoEm || 0) - (a.criadoEm || 0)).slice(0, 8).map(p => `- ${p.processo ? esc(p.processo) : "sem processo"} · ${esc(p.unidade)} · ${fmtN(planQtd(p))} bens · ${fmtD((p.entrega && p.entrega.data) || p.criadoEm)}`).join("\n");
+  }
+  let base = L; if (E.mat) { const ids = new Set(E.mat.its.map(i => i.id)); base = L.filter(l => ids.has(l.it.id)); } else if (E.cat) base = L.filter(l => l.it.categoria === E.cat);
+  const chave = l => c.doItem ? val(l.it.fornecedor) || val(l.fornecedor) : val(l[c.k]);
+  const G = {}; base.forEach(l => { const k = chave(l); if (!k) return; const g = G[k] = G[k] || {k, rec:0, disp:0, valor:0, mats:new Set(), ult:0}; g.rec += l.qtd; g.disp += l.disp; g.valor += l.qtd * (l.vu || 0); g.mats.add(l.it.descricao); g.ult = Math.max(g.ult, l.data || 0); });
+  const semCampo = base.filter(l => !chave(l)).length;
+  const so = /\b(DISPONIVE\w*|SALDO|AINDA|SOBR\w*|RESTA\w*|EM ESTOQUE|NA RESERVA)\b/.test(n);
+  let arr = Object.values(G); if (so) arr = arr.filter(g => g.disp > 0);
+  arr.sort((a, b) => b.disp - a.disp || b.ult - a.ult);
+  const alvo = E.mat ? ` de ${esc(E.mat.txt.toLowerCase())}` : E.cat ? ` de ${esc(E.cat.toLowerCase())}` : "";
+  if (!Object.keys(G).length) return `Nenhuma entrada${alvo} tem ${c.um} ${c.fem ? "informada" : "informado"} na reserva.${semCampo ? ` (${plural(semCampo, "entrada está", "entradas estão")} sem ${c.um}.)` : ""}`;
+  const comSaldo = Object.values(G).filter(g => g.disp > 0).length;
+  const linhas = [`**${plural(Object.keys(G).length, c.um, c.varios)}**${alvo} nas entradas da reserva${c.doItem ? "" : ""}; **${comSaldo}** ${comSaldo === 1 ? "ainda tem" : "ainda têm"} bens disponíveis.`];
+  linhas.push((arr.length ? arr : Object.values(G)).slice(0, 8).map(g => `- ${esc(g.k)}: ${fmtN(g.disp)} disponíveis de ${fmtN(g.rec)} recebidos${g.valor ? ` · ${BRL.format(g.valor)}` : ""} · ${esc([...g.mats].slice(0, 2).join(", "))}${g.mats.size > 2 ? ` e mais ${g.mats.size - 2}` : ""}`).join("\n") + ((arr.length || Object.keys(G).length) > 8 ? `\n- e mais ${(arr.length || Object.keys(G).length) - 8}…` : ""));
+  if (semCampo) linhas.push(`${plural(semCampo, "entrada não tem", "entradas não têm")} ${c.um} ${c.fem ? "informada" : "informado"} na planilha.`);
+  if (c.k === "empenho" && typeof empList === "function") { try { const M = empList().filter(e => e.status !== "CONCLUIDO"); if (M.length) linhas.push(`No controle de tombamento há ${plural(M.length, "empenho em andamento", "empenhos em andamento")}: pergunte “empenhos aguardando tombamento”.`); } catch (x) {} }
+  return linhas.join("\n");
+}
+// perguntas gerais sobre a planilha: saídas, atributos do material, valores, entradas por ano, listas
+function respostaPlanilha(q, n, E, msg) {
+  const act = a => { if (actionAllowed(a)) msg.actions.push(a); };
+  const st = computeStock(); const its = E.mat ? E.mat.its : E.cat ? Object.values(S.items).filter(i => i.categoria === E.cat) : null;
+  const ano = (n.match(/\b(19|20)\d\d\b/) || [])[0];
+  const lista = (arr, f, max = 8) => arr.slice(0, max).map(f).join("\n") + (arr.length > max ? `\n- e mais ${arr.length - max}…` : "");
+  const saidas = () => Object.values(S.plans).filter(p => p.status === "ENTREGUE").map(p => ({p, d:(p.entrega && p.entrega.data) || p.etapaEm || p.criadoEm})).sort((a, b) => b.d - a.d);
+  // atributo de um material
+  if (its && its.length) {
+    const it = its.length === 1 ? its[0] : its.slice().sort((a, b) => st[b.id].saldo - st[a.id].saldo)[0];
+    const um = its.length === 1 ? "" : ` (há ${its.length} materiais parecidos; mostro ${esc(it.descricao)})`;
+    const ATR = [
+      [/\bESPECIFICAC\w*|\bDESCRICAO COMPLETA|\bDETALHES?\b|\bCARACTERISTICAS?\b/, () => `**${esc(it.descricao)}**${um}: ${it.especificacao ? esc(it.especificacao) : "sem especificação na planilha."}`],
+      [/\bUNIDADE DE MEDIDA\b|\bMEDIDA\b/, () => `**${esc(it.descricao)}**${um} é controlado por **${esc(String(it.unidadeMedida || "unidade").toLowerCase())}**.`],
+      [/\bCODIGO\b/, () => `O código de **${esc(it.descricao)}**${um} é **${esc(it.codigo || "—")}**.`],
+      [/\bONDE (FICA|ESTA|ESTAO|FICAM)\b|\bLOCALIZAC\w*|\bGUARDAD\w*|\bEM QUE (GALPAO|LUGAR)\b/, () => `**${esc(it.descricao)}**${um} fica em **${esc(it.localizacao || "Almoxarifado Central")}**.`],
+      [/\bFOTOS?\b|\bIMAGEM\b/, () => `**${esc(it.descricao)}**${um} ${it.foto ? "tem foto cadastrada; abra o material para ver." : "não tem foto cadastrada."}`],
+      [/\bVALOR MEDIO\b|\bPRECO MEDIO\b|\bCUSTO MEDIO\b|\bQUANTO CUSTA\b|\bVALOR UNITARIO\b|\bPRECO\b/, () => { const ls = its.flatMap(i => lotsOf(i)).filter(l => l.vu > 0); const qq = ls.reduce((a, l) => a + l.qtd, 0);
+        return qq ? `Valor médio de **${E.mat ? esc(E.mat.txt.toLowerCase()) : esc(it.descricao)}**: **${BRL.format(ls.reduce((a, l) => a + l.qtd * l.vu, 0) / qq)}** por unidade, em ${plural(ls.length, "entrada com valor", "entradas com valor")} (de ${BRL.format(Math.min(...ls.map(l => l.vu)))} a ${BRL.format(Math.max(...ls.map(l => l.vu)))}).` : `As entradas de ${esc(it.descricao)} não têm valor unitário na planilha.`; }],
+      [/\bDATA DE ENTRADA\b|\bQUANDO (CHEGOU|CHEGARAM|ENTROU|ENTRARAM)\b/, () => `Entradas de **${esc(it.descricao)}**${um}:\n` + lista(lotsOf(it).slice().sort((a, b) => b.data - a.data), l => `- ${fmtD(l.data)} · ${fmtN(l.qtd)} un.${l.vu ? " · " + BRL.format(l.vu) : ""}${l.empenho ? " · empenho " + esc(l.empenho) : ""}`)],
+      [/\b(PARA|PRA|P\/|P) ONDE (FOI|FORAM|SAIU|SAIRAM|MANDAMOS|ENVIAMOS)\b|\bQUEM (RECEBEU|FICOU COM)\b|\bSAIDAS? D[OAE]S?\b/, () => { const ids = new Set(its.map(i => i.id)); const S2 = saidas().filter(x => (x.p.itens || []).some(li => ids.has(li.itemId)));
+        if (!S2.length) return `Ainda não saiu nenhum(a) ${E.mat ? esc(E.mat.txt.toLowerCase()) : esc(it.descricao)} da reserva.`;
+        return `Saídas de **${E.mat ? esc(E.mat.txt.toLowerCase()) : esc(it.descricao)}**: ${fmtN(S2.reduce((a, x) => a + x.p.itens.filter(li => ids.has(li.itemId)).reduce((b, li) => b + li.qtd, 0), 0))} bens em ${plural(S2.length, "saída", "saídas")}.\n` + lista(S2, x => `- ${fmtD(x.d)} · ${esc(x.p.unidade)}: ${x.p.itens.filter(li => ids.has(li.itemId)).map(li => `${fmtN(li.qtd)} × ${esc(li.descricao)}`).join("; ")}${x.p.processo ? " · processo " + esc(x.p.processo) : ""}`); }]
+    ];
+    for (const [re, f] of ATR) if (re.test(n)) return f();
+  }
+  // saídas (destinações já entregues)
+  if (/\b(SAIDAS?|SAIU|SAIRAM|DESTINACOES (FEITAS|REALIZADAS|ENTREGUES)|ULTIMA ENTREGA|ULTIMAS ENTREGAS)\b/.test(n) && !/\bENTRADAS?\b/.test(n)) {
+    let X = saidas(); if (ano) X = X.filter(x => new Date(x.d).getFullYear() === +ano);
+    if (E.uni) X = X.filter(x => normName(x.p.unidade).includes(normName(E.uni.name).split(" (")[0].slice(0, 12)) || (x.p.unidadeCode && x.p.unidadeCode === E.uni.code));
+    if (!X.length) return `Nenhuma saída registrada${ano ? " em " + ano : ""}${E.uni ? " para " + esc(E.uni.name) : ""}.`;
+    if (/\bULTIMA\b/.test(n)) { const x = X[0]; return `A última saída foi em **${fmtD(x.d)}**: ${esc(x.p.numero)} para **${esc(x.p.unidade)}** · ${(x.p.itens || []).map(li => `${fmtN(li.qtd)} × ${esc(li.descricao)}`).join("; ")}${x.p.processo ? " · processo " + esc(x.p.processo) : ""}.`; }
+    return `**${plural(X.length, "saída", "saídas")}**${ano ? " em " + ano : ""}${E.uni ? " para " + esc(E.uni.name) : ""}, ${fmtN(X.reduce((a, x) => a + planQtd(x.p), 0))} bens (mais recentes primeiro):\n` + lista(X, x => `- ${fmtD(x.d)} · ${esc(x.p.unidade)} · ${fmtN(planQtd(x.p))} bens${x.p.processo ? " · processo " + esc(x.p.processo) : ""}`);
+  }
+  // entradas: contagem, por ano, valor total
+  if (/\bENTRADAS?\b|\bCHEGOU\b|\bCHEGARAM\b|\bRECEBEMOS\b/.test(n) && (ano || /\bQUANTAS ENTRADAS\b|\bTOTAL DE ENTRADAS\b/.test(n))) {
+    let L = Object.values(S.items).flatMap(it => lotsOf(it).map(l => ({...l, it}))); if (ano) L = L.filter(l => new Date(l.data).getFullYear() === +ano);
+    if (!L.length) return `Nenhuma entrada${ano ? " em " + ano : ""}.`;
+    const tot = L.reduce((a, l) => a + l.qtd, 0), val = L.reduce((a, l) => a + l.qtd * (l.vu || 0), 0);
+    return `**${plural(L.length, "entrada", "entradas")}**${ano ? " em " + ano : " na planilha"}: ${fmtN(tot)} bens, ${plural(new Set(L.map(l => l.it.id)).size, "material", "materiais")}${val ? ` · ${BRL.format(val)} nas entradas com valor` : ""}.\n` + lista(L.sort((a, b) => b.data - a.data), l => `- ${fmtD(l.data)} · ${fmtN(l.qtd)} × ${esc(l.it.descricao)}${l.empenho ? " · empenho " + esc(l.empenho) : ""}`);
+  }
+  if (/\bQUANTO (CUSTOU|CUSTARAM|FOI GASTO|GASTAMOS)\b|\bVALOR TOTAL DAS ENTRADAS\b|\bVALOR DE TUDO\b|\bCUSTOU TUDO\b/.test(n)) {
+    const L = Object.values(S.items).flatMap(it => lotsOf(it)); const val = L.reduce((a, l) => a + l.qtd * (l.vu || 0), 0), sv = L.filter(l => !(l.vu > 0)).length;
+    return `As entradas registradas somam **${BRL.format(val)}**${sv ? `, sem contar ${plural(sv, "entrada sem valor unitário", "entradas sem valor unitário")}` : ""}.`;
+  }
+  if (/\b(MATERIAIS|ITENS|BENS) (SEM|QUE NAO TEM|QUE NAO TEMOS|NAO TEM|NAO TEMOS) (VALOR|PRECO)\b|\bSEM VALOR\b/.test(n)) {
+    const X = Object.values(S.items).filter(i => !(i.valorUnitario > 0));
+    return X.length ? `**${plural(X.length, "material está", "materiais estão")} sem valor unitário**:\n` + lista(X, i => `- ${esc(i.descricao)}: ${fmtN(st[i.id].saldo)} sob guarda`, 12) : "Todos os materiais têm valor unitário.";
+  }
+  if (/\b(MATERIAIS|ITENS|QUAIS) (COM|TEM|QUE TEM|QUE TEMOS) FOTOS?\b|\bSEM FOTOS?\b/.test(n)) {
+    const c = Object.values(S.items).filter(i => i.foto).length, t = Object.keys(S.items).length;
+    return /\bSEM FOTO/.test(n) ? `${plural(t - c, "material está", "materiais estão")} sem foto.` : `**${c} de ${t} materiais** têm foto cadastrada.`;
+  }
+  if (/^(LISTA|LISTAR|LISTE|RELACAO|RELACIONE|MOSTRE|MOSTRA|QUAIS SAO)( DE| DOS| OS| AS| TODOS OS)? (MATERIAIS|ITENS|BENS)\b|^(TODOS OS )?MATERIAIS$/.test(n)) {
+    const X = Object.values(S.items).sort((a, b) => st[b.id].saldo - st[a.id].saldo);
+    act({tipo:"abrir_tela", tela:"reserva", rotulo:"Ver a reserva técnica"});
+    return `**${plural(X.length, "material", "materiais")}** na reserva:\n` + lista(X, i => `- ${esc(i.descricao)}: ${fmtN(st[i.id].disp)} disponíveis de ${fmtN(st[i.id].saldo)}`, 30);
+  }
+  return null;
+}
+// "ar condicionado 12.000", "de 30 mil btus": o número escolhe o modelo e não é quantidade
+function refinarModelo(nl, q) {
+  const E = nl.ents || {}; if (!E.mat || !E.mat.its || E.mat.its.length < 2) return;
+  const Q = normName(q); const nums = [];
+  for (const m of Q.matchAll(/\b(\d{1,3})(?:\.(\d{3})|\s?MIL)\b/g)) nums.push({v:+m[1] * 1000, base:+m[1]});
+  for (const m of Q.matchAll(/\b(\d{4,6})\b/g)) if (!/^(19|20)\d\d$/.test(m[1])) nums.push({v:+m[1], base:null});
+  for (const x of nums) {
+    const fmt = [String(x.v), x.v.toLocaleString("pt-BR")];
+    const its = E.mat.its.filter(i => fmt.some(f => normName(i.descricao).includes(f)));
+    if (its.length && its.length < E.mat.its.length) { E.mat = {...E.mat, its}; if (x.base && E.qtd === x.base) delete E.qtd; if (E.qtd === x.v) delete E.qtd; return; }
+  }
 }
 let VOC_MAT = null;
 function vocMateriais() {
@@ -4215,7 +4355,20 @@ function corrigirVerbo(q) { // "libee 5 cadeiras" -> "libere 5 cadeiras"
     let best = null, bd = 99; VERBOS_DEST.forEach(v => { const d = levLong(n, v); if (d <= (v.length >= 7 ? 2 : 1) && d < bd) { bd = d; best = v; } }); if (best) { w[i] = best.toLowerCase(); return w.join(" "); } }
   return q;
 }
+// corrige erros de digitação nas palavras-chave do sistema antes de interpretar ("saiida", "epenhso", "ptegoes")
+const CHAVES = "SAIDA SAIDAS ULTIMA ULTIMO EMPENHO EMPENHOS PROCESSO PROCESSOS PREGAO PREGOES REQUISICAO REQUISICOES ESPECIFICACAO MEDIO MEDIA QUANDO CHEGOU CHEGARAM ONDE FORAM SALDO PRECO VALOR FORNECEDOR FORNECEDORES ENTRADA ENTRADAS PRECISO SABER DUVIDA ASSISTENTE QUANTOS QUANTAS QUANTO TEMOS DISPONIVEL DISPONIVEIS PLANOS PLANO PENDENCIAS ATRASADOS PARADOS GARANTIA TOMBAMENTO ENTREGAS ENTREGUES RESERVA MATERIAIS LISTA OBRIGADO DEPOIS FICA DEIXA AGORA".split(" ");
+let CONHECIDAS = null;
+function corrigirChaves(q) {
+  if (!CONHECIDAS || CONHECIDAS.n !== Object.keys(S.items).length) { const k = new Set([...CHAVES, ...NLU_STOP, ...Object.keys(NLU_SIN || {})]); vocMateriais().frases.forEach(f => f.split(" ").forEach(w => k.add(w))); Object.values(S.items).forEach(i => normName(i.descricao).split(/[^A-Z0-9]+/).forEach(w => k.add(w))); (ORG && ORG.list || []).slice(0, 4000).forEach(u => normName(u.name).split(/[^A-Z0-9]+/).forEach(w => w.length >= 3 && k.add(w))); CONHECIDAS = {n:Object.keys(S.items).length, k}; }
+  return String(q).split(/(\s+)/).map(tok => {
+    const m = tok.match(/^([^A-Za-zÀ-ú0-9]*)([A-Za-zÀ-ú]{4,})([^A-Za-zÀ-ú0-9]*)$/); if (!m) return tok;
+    const w = normName(m[2]); if (CONHECIDAS.k.has(w)) return tok;
+    let best = null, bd = 99; for (const c of CHAVES) { if (Math.abs(c.length - w.length) > 2) continue; const d = levLong(w, c); const lim = c.length >= 6 ? 2 : 1; if (d <= lim && d < bd) { bd = d; best = c; } }
+    return best ? m[1] + best.toLowerCase() + m[3] : tok;
+  }).join("");
+}
 function localAnswer(q, msg, _tentou) {
+  try { q = corrigirChaves(q); } catch (e) {}
   const nq = normName(limparEnfeites(q)).replace(/[?!.,;:()"“”]/g, " ").replace(/\s+/g, " ").trim();
   const seg = nq.match(/^E (?:O |A |OS |AS |DE |DO |DA |DOS |DAS |QUANTO A |SOBRE )?(.{2,40})$/);
   if (seg && AS.ultimo === "saldo" && !AS._fuzzy && !AS.slot && seg[1].split(" ").length <= 4 && !/^(VOCE|AI|ENTAO|AGORA|DEPOIS|HOJE)$/.test(seg[1])) {
@@ -4233,6 +4386,8 @@ function localAnswer0(q, msg, _tentou) {
   const cv = conversaNormal(n0, msg); if (cv) return cv;
   const dc = chatDecisao(q, msg); if (dc) return dc;
   let nl; try { nl = nluEntender(q); } catch (e) { console.error(e); nl = {intent:null, score:0, ents:{}, rank:[]}; }
+  refinarModelo(nl, q);
+  if (!/^(QUERO|PRECISO|DESTIN|MANDE|ENVIE|LIBERE)/.test(nl.n || "")) { try { const rc = respostaCampos(q, nl.n || "", nl.ents || {}, msg); if (rc) return rc; } catch (e) { console.error(e); } }
   if (nl.intent === "entregas" && !nl.ents.uni && !nl.ents.mat && /\b(TEMOS|TEM|HA|EXISTE\w*|DISPONIVE\w*|SALDO|ESTOQUE)\b/.test(nl.n || "") && !/\b(ENTREG|RECEB|CHEG|DESTINAD|MANDAD|ENVIAD|SAIU|SAIRAM)\w*/.test(nl.n || "") && /\bHOJE\b/.test(nl.n || "") && !AS._fuzzy) { AS._fuzzy = true; try { return localAnswer(nl.n.replace(/\bHOJE\b/, "").trim(), msg); } finally { AS._fuzzy = false; } } // "quantos bens temos hoje" é saldo, não entrega de hoje
   if (nl.ents && nl.ents.uni && (["resumo","est_total"].includes(nl.intent) || /^COMO (ESTA|ANDA|VAI|FICA)\b/.test(nl.n || ""))) { nl.intent = "unidade_info"; nl.score = Math.max(nl.score, 0.6); } // "como está o CCS hoje?" é sobre a unidade
   const curta = nl.n && nl.n.split(" ").length <= 6;
