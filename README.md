@@ -88,6 +88,8 @@ Toda mudança no `index.html` roda automaticamente no GitHub (aba **Actions → 
 - `tests/chat-casos.json`: conversas reais, incluindo cada bug já reportado, com o que deve e o que não pode aparecer na resposta.
 - `tests/variacoes.py`: centenas de variações geradas (jeitos de pedir destinação, de perguntar saldo, cumprimentos). Regra: pedido de destinação começa pela disponibilidade; pergunta de saldo responde saldo; cumprimento não traz pendências.
 
+- `tests/rodar_massa.py N`: gera N perguntas com erros de digitação, sem acento, abreviações ("vc", "qts", "p/"), nomes populares e frases de enfeite, em 14 tipos de pedido, e confere cada resposta. O GitHub roda 20 mil a cada mudança e exige 98,5% de acerto.
+
 Para rodar no computador: `pip install playwright && python -m playwright install chromium`, depois `python tests/rodar_chat.py` e `python tests/variacoes.py`.
 
 **Bug novo no chat:** clique em "Resposta errada?" embaixo da resposta e descreva o que deveria acontecer. O gestor baixa os reportes em Monitoramento → Registro do assistente ("Baixar reportes como casos de teste"). Cada reporte vira um caso em `tests/chat-casos.json`, e a correção só é aceita quando todos os casos passam.

@@ -2874,7 +2874,14 @@ function chatDecisao(q, msg) {
   const DOMINIO = /^(BENS?|ITENS?|ITEM|MATERIA(L|IS)|PLANOS?|ENTREGAS?|EMPENHOS?|UNIDADES?|PENDENCIAS?|TERMOS?|PROPOSTAS?|DECISO(ES)?|DECISAO|USUARIOS?|PERFIS?|CATEGORIAS?|LOTES?|TOMBAMENTOS?|DIAS|PRAZOS?|VALOR|DINHEIRO|RESERVA|SALDO|ESTOQUE|AUTORIZAC\w*|DESTINAC\w*|PROCESSOS?|DOCUMENTOS?|NOVIDADES?|COISAS?|ALGO|ALGUEM|NADA|ATRASOS?|ATRASAD\w*|PROBLEMAS?|ERROS?|ALERTAS?|AVISOS?|URGEN\w*|TEMPO|COMO|QUE|O QUE|QUANT\w*|PRA MIM|PARA MIM|DUVIDAS?|PERGUNTAS?|AJUDA|NOTICIAS?|MAIS|ASSINATURAS?|ASSINAR|DEMANDAS?|PEDIDOS?|SOLICITAC\w*|NOTIFICAC\w*|MENSAGE\w*|EMAILS?|E MAILS?)\b/;
   const perguntaSaldo = n.match(/^(?:QUANTOS?|QUANTAS?) (.+?) (?:TEMOS|TEM|HA|EXISTEM|EXISTE|SOBRARAM|RESTAM|DISPONIVE\w*)\b/) || n.match(/^QUANTO (?:TEMOS|TEM|HA) DE (.+?)$/) || n.match(/^(?:TEM|TEMOS|HA|EXISTE|EXISTEM) (?:ALGUM |ALGUMA |ALGUNS |ALGUMAS )?(.+?)(?: DISPONIVE\w*| NA RESERVA| EM ESTOQUE| SOBRANDO)?$/) || n.match(/^(?:SALDO|ESTOQUE|DISPONIBILIDADE) (?:DE|DO|DA|DOS|DAS) (.+?)$/) || n.match(/^QUAL (?:O|A) (?:SALDO|ESTOQUE|DISPONIBILIDADE) (?:DE|DO|DA|DOS|DAS) (.+?)$/);
   const VAZIO = /^(TEMOS|TEM|HA|EXISTE|EXISTEM|DISPONIVE\w*|PARA|DE|DO|DA|AINDA|AGORA|HOJE|NO TOTAL|AO TODO|NA RESERVA|EM ESTOQUE)( |$)/;
+  const tentarCorrigir = (base, termoN) => { if (AS._fuzzy) return null;
+    const DOMW = ["BENS","ITENS","PLANOS","ENTREGAS","EMPENHOS","MATERIAIS","UNIDADES","PENDENCIAS"];
+    const ws = termoN.split(" "); const k = ws.findIndex(w => w.length >= 3 && DOMW.some(d => d !== w && levLong(w, d) <= 1));
+    if (k >= 0) { const d = DOMW.find(d => levLong(ws[k], d) <= 1); AS._fuzzy = true; try { return localAnswer(base.replace(ws[k], d), msg); } finally { AS._fuzzy = false; } }
+    const c = corrigirTermo(termoN); if (!c || c === normName(termoN)) return null;
+    AS._fuzzy = true; try { return localAnswer(base.replace(termoN, c), msg); } finally { AS._fuzzy = false; } };
   if (perguntaSaldo && !E.mat && !E.cat && !E.uni && !VAZIO.test(perguntaSaldo[1]) && !/\b(RISCO|GARANTIA|VENC\w*|PERDER|PRAZO|MEDI[AO]|VALOR|CUSTO)\b/.test(perguntaSaldo[1]) && !DOMINIO.test(perguntaSaldo[1]) && perguntaSaldo[1].split(" ").length <= 4 && !/\b(PD|DT|NE)\b|\d{4}/.test(perguntaSaldo[1])) {
+    const corr = tentarCorrigir(n, perguntaSaldo[1]); if (corr) return corr;
     const termo = normName(q).replace(/[?!.,;:]/g, " ").split(/\s+/).filter(w => perguntaSaldo[1].split(" ").some(x => x.startsWith(w.slice(0, 4)) || w.startsWith(x.slice(0, 4)))).join(" ").toLowerCase() || perguntaSaldo[1].toLowerCase();
     const pal = perguntaSaldo[1].split(" ").filter(w => w.length > 3 && !/^(DISPONIVE|RESERVA|AINDA|AGORA)/.test(w));
     const viz = Object.values(S.items).filter(i => computeStock()[i.id].disp > 0 && pal.some(w => normName(i.descricao).includes(w.slice(0, 5))));
@@ -2886,6 +2893,7 @@ function chatDecisao(q, msg) {
     const vi = ws.findIndex(w => /^(DESTIN|DETERMIN|MAND|ENVI|ENCAMINH|LIBER|REPASS|DOA|DOE|ENTREG|PLANO)/.test(w));
     let it = ws.slice(vi + 1); const pi = it.findIndex(w => /^(PARA|PRA|PRO|AO|NO|NA)$/.test(w)); if (pi >= 0) it = it.slice(0, pi);
     it = it.filter(w => !/^(UM|UMA|UNS|UMAS|O|A|OS|AS|DE|DO|DA|DOS|DAS|COM|\d+)$/.test(w) && !NUMW[w]);
+    if (it.length) { const corr = tentarCorrigir(normName(q).replace(/[?!.,;:]/g, " ").replace(/\s+/g, " ").trim(), it.join(" ")); if (corr) return corr; }
     if (it.length) { AS.slot = null; const termo = it.join(" ").toLowerCase();
       const viz = Object.values(S.items).filter(i => computeStock()[i.id].disp > 0 && it.some(w => w.length > 3 && normName(i.descricao).includes(w.slice(0, 5))));
       if (viz.length) msg.sug = viz.slice(0, 3).map(i => `Quero destinar ${i.descricao}`);
@@ -3772,9 +3780,12 @@ function nluUnidade(n, qOrig) {
   // 1) sigla (CCS, CCEN, STI…): siglas que também são palavras comuns só valem se escritas em maiúsculas
   const AMB = new Set(["PRA","SE","DA","DE","NA","NO","AO","OU","UM","CE","PE","RE","TI","CI","CA"]);
   const up = new Set((qOrig.match(/\b[A-ZÀ-Ú]{2,8}\b/g) || []).map(normName));
-  for (const w of n.split(" ")) { const u = NLU.siglas.get(w); if (u && (!AMB.has(w) || up.has(w)) && (w.length >= 3 || up.has(w))) return {u, txt:w}; }
+  const ws = n.split(" ");
+  for (let i = 0; i < ws.length; i++) { const w = ws[i]; const u = NLU.siglas.get(w); const antes = /^(DO|DA|NO|NA|PARA|PRA|PRO|AO|O|A|DE)$/.test(ws[i - 1] || "");
+    if (u && (!AMB.has(w) || up.has(w) || (antes && w.length === 2 && i === ws.length - 1)) && (w.length >= 3 || up.has(w) || antes)) return {u, txt:w}; }
   // 2) nome depois de "para o / do / no / da / pro / ao"
-  const m = n.match(/\b(?:PARA|PRA|PRO|DO|DA|NO|NA|AO|PELO|PELA)\s+(?:O\s+|A\s+)?((?:[A-Z0-9]+\s?){1,6})$/) || n.match(/\b(?:PARA|PRA|PRO|NO|NA|AO|PELO|PELA|DO|DA)\s+(?:O\s+|A\s+)?((?:[A-Z0-9]+\s?){2,6})/);
+  const n2 = n.replace(/\s+(HOJE|AGORA|ATUALMENTE|AINDA)$/, "");
+  const m = n2.match(/\b(?:PARA|PRA|PRO|DO|DA|NO|NA|AO|PELO|PELA)\s+(?:O\s+|A\s+)?((?:[A-Z0-9]+\s?){1,6})$/) || n2.match(/\b(?:ESTA|SOBRE|VER|VEJA|SITUACAO)\s+(?:O|A|DO|DA)\s+((?:[A-Z0-9]+\s?){1,6})$/) || n.match(/\b(?:PARA|PRA|PRO|NO|NA|AO|PELO|PELA|DO|DA)\s+(?:O\s+|A\s+)?((?:[A-Z0-9]+\s?){2,6})/);
   const DOM = new Set("RESERVA TECNICA ESTOQUE ALMOXARIFADO SISTEMA DESTINA DEPOSITO GALPAO MES SEMANA ANO HOJE ONTEM TOTAL GERAL PLANO PLANOS EMPENHO EMPENHOS UNIDADE UNIDADES BENS BEM ITENS MATERIAIS VALOR PRAZO ETAPA ENTREGA ENTREGAS ASSINATURA REITORA REITORIA PRO REITOR".split(" "));
   if (m) { let ph = m[1].trim().split(" "); while (ph.length && (DOM.has(ph[0]) || NLU_STOP.has(ph[0]))) ph.shift(); while (ph.length) { const t = ph.join(" "); if (t.length >= 4 && !ph.every(w => DOM.has(w) || NLU_STOP.has(w))) { const r = searchUnits(t, 1)[0]; const ehMat = ph.length <= 2 && (CATS.some(c => normName(c) === t) || Object.values(S.items).some(it => matchText(it.descricao, t))); if (r && !ehMat && normName(r.name + " " + uSigla(r)).includes(ph[0])) return {u:r, txt:t}; } ph.pop(); } }
   return null;
@@ -3848,7 +3859,7 @@ function nluResponder(nl, msg) {
   const lista = (arr, f, max = 5) => arr.slice(0, max).map(f).join("\n") + (arr.length > max ? `\n- e mais ${arr.length - max}…` : "");
   const atencao = [], linhas = []; let sug = "";
   const fecha = () => [linhas.join("\n"), atencao.length ? "\n**Atenção:**\n" + atencao.map(a => "- " + a).join("\n") : "", sug ? "\n**Sugestão:** " + sug : ""].filter(Boolean).join("\n");
-  const naUni = (p, u) => matchText(planUnitText(p), u.name) || (uSigla(u) && normName(planUnitText(p)).includes(normName(uSigla(u))));
+  const naUni = (p, u) => matchText(planUnitText(p), u.name) || (uSigla(u) && new RegExp("(^|[^A-Z0-9])" + normName(uSigla(u)).replace(/[^A-Z0-9]/g, "") + "([^A-Z0-9]|$)").test(normName(planUnitText(p)))); // sigla como palavra inteira: "CE" não casa com "CENTRO"
   const uNome = u => uSigla(u) ? `${uSigla(u)}` : u.name;
   const entregas = () => Object.values(S.plans).filter(p => p.status === "ENTREGUE" && p.entrega && (!E.per || p.entrega.data >= E.per.de && p.entrega.data < E.per.ate) && (!E.uni || naUni(p, E.uni)));
   const matIds = E.mat ? new Set(E.mat.its.map(i => i.id)) : E.cat ? new Set(its.filter(i => i.categoria === E.cat).map(i => i.id)) : null;
@@ -4138,28 +4149,76 @@ function conversaNormal(n, msg) {
     // fora do assunto
     [/\b(PREVISAO DO TEMPO|VAI CHOVER|CLIMA HOJE|FUTEBOL|JOGO DE HOJE|RECEITA DE|PIADA|CONTA UMA PIADA|CAPITAL DA|QUEM GANHOU|NOTICIAS?)\b/, () => "Isso foge do que eu sei: só tenho os dados do Destina (reserva técnica, planos, entregas e empenhos). Posso ajudar com algum desses?"],
   ];
+  const CONV = ["AGORA","NAO","DEIXA","DEIXE","DEPOIS","FICA","OBRIGADO","OBRIGADA","AGRADECO","VALEU","BOM","BOA","TARDE","NOITE","OLA","TUDO","BEM","DESCONSIDERE","DESCONSIDERA","VEJO","ESQUECE","CANCELA","IGNORE","PERFEITO","CERTO","COMBINADO","MUITO","TENHO","PRECISO","FAZER","HOJE","AJUDA","PARA","FICA","VEJO"];
+  if (n.split(" ").length <= 6) n = n.split(" ").map(w => { if (w.length < 3 || CONV.includes(w) || (w.length === 3 && !CONV.some(c => c.length === 4 && lev(w, c) === 1))) return w; let best = w, bd = w.length >= 7 ? 2 : 1; CONV.forEach(c => { const d = lev(w, c); if (d <= bd && Math.abs(c.length - w.length) <= 2) { best = c; bd = d - 0.5; } }); return best; }).join(" ");
   const curta = n.split(" ").length <= 9;
+  if (/^(O )?(QUE|Q) (EU )?(TENHO|PRECISO|DEVO) (PARA |PRA |P |P\/ |DE |A )?(FAZER|HOJE|RESOLVER|ASSINAR)\b|^(MINHAS|MEUS) (TAREFAS|AFAZERES|PENDENCIAS)\b/.test(n)) { const r = nluResponder({q:n, n, mk:n, ents:{}, intent:"pendencias", score:1, rank:[], fixes:[]}, msg); if (r) return r; }
   if (curta && /\b(DEIX\w* (ISSO |ISTO |ESSE |ESSA )?(PRA|PARA|P) (DEPOIS|MAIS TARDE|AMANHA|OUTRA HORA|OUTRO DIA|SEGUNDA)|DEPOIS (EU )?(VEJO|RESOLVO|FACO|OLHO)|VEJO DEPOIS|FICA (PRA|PARA) DEPOIS|AGORA NAO|NAO AGORA|MAIS TARDE (EU )?(VEJO|RESOLVO)|NAO E PRIORIDADE|NAO E URGENTE)\b/.test(n)) { AS.slot = null; return CONV_ESCOLHE(["Tudo bem, fica para depois. Em que mais posso ajudar?", "Combinado, deixamos para depois. Precisa de mais alguma coisa?"]); }
   if (curta && /\b(DESCONSIDER\w*|IGNOR\w*|ESQUEC\w*|DEIXA (PRA|PARA) LA|DEIXA ISSO|CANCELA ISSO|NAO (E|ERA) ISSO|NAO QUERO (ISSO|ESSE|ESSA)|NAO PRECISA|NAO PRECISO (DISSO|DESSE|DESSA))\b/.test(n)) { AS.slot = null; AS.ctx = null; return CONV_ESCOLHE(["Certo, desconsiderei. O que você precisa?", "Tudo bem, deixei de lado. Como posso ajudar?"]); }
   const PREFIXO = new Set([0, 1, 5, 6, 7, 8]); // cumprimentos e cortesias que podem vir antes de uma pergunta
   for (const [k, [re, f]] of R.entries()) if (re.test(n)) {
     if (!PREFIXO.has(k)) return f();
     // cumprimento seguido de pergunta de verdade: deixa a pergunta seguir
-    const resto = n.replace(/^(?:(?:OI+|OLA|OPA|E AI|EAI|HELLO|HEY|SALVE|BOM DIA|BOA TARDE|BOA NOITE|SAUDACOES|TUDO BEM COM VOCE|TUDO BOM COM VOCE|TUDO BEM|TUDO BOM|TUDO CERTO|COMO VAI VOCE|COMO VAI|COMO VOCE ESTA|E VOCE|COM VOCE|DESTINA|ASSISTENTE|PESSOAL|AMIGO|OBRIGAD\w*|VALEU|OK|CERTO|BELEZA|PERFEITO|OTIMO|SIM|NAO|NADA|ENTENDI|LEGAL|SHOW)\b\s*)+/, "").trim();
-    if (resto && resto.split(" ").length >= 2 && !/^(E VOCE|COM VOCE|PRA VOCE|PARA VOCE|TAMBEM|IGUALMENTE)$/.test(resto)) return null;
+    const resto0 = n.replace(/^(?:(?:OI+|OLA|OPA|E AI|EAI|HELLO|HEY|SALVE|BOM DIA|BOA TARDE|BOA NOITE|SAUDACOES|TUDO BEM COM VOCE|TUDO BOM COM VOCE|TUDO BEM|TUDO BOM|TUDO CERTO|COMO VAI VOCE|COMO VAI|COMO VOCE ESTA|E VOCE|COM VOCE|DESTINA|ASSISTENTE|PESSOAL|AMIGO|OBRIGAD\w*|VALEU|OK|CERTO|BELEZA|PERFEITO|OTIMO|SIM|NAO|NADA|ENTENDI|LEGAL|SHOW)\b\s*)+/, "").trim();
+    const restoR = n.replace(re, "").replace(/^[\s,]+/, "").trim(); const resto = restoR.length < resto0.length ? restoR : resto0;
+    if (/^(PELA|PELO|POR) (AJUDA|RETORNO|INFORMACAO|ATENCAO|RESPOSTA|FORCA)\b|^(HOJE|MESMO|VIU|DE NOVO|DEMAIS|MUITO|VIU|TA|BEM|RAPIDINHO|ASSISTENTE)( HOJE)?$/.test(resto)) return f();
+    if (resto && resto !== n) { const r2 = conversaNormal(resto, msg); if (r2) return r2; }
+    if (resto && (resto.split(" ").length >= 2 || (resto.length >= 5 && !/^(VOCE|TAMBEM|IGUALMENTE|AMIGO|AMIGA|ASSISTENTE|PESSOAL|GENTE|QUERIDO|QUERIDA|TUDO|BELEZA)$/.test(resto))) && !/^(E VOCE|COM VOCE|PRA VOCE|PARA VOCE|TAMBEM|IGUALMENTE)$/.test(resto)) return null;
     return f();
   }
   return null;
 }
 
 // combina: entendimento por semelhança (com memória do assunto) + regras específicas + pedido de esclarecimento
-function localAnswer(q, msg) {
+// tira enfeites que não mudam a pergunta: "uma dúvida:", "assistente,", "me diz", "por favor", "rapidinho"…
+const lev = (a, b) => { if (Math.abs(a.length - b.length) > 2) return 9; const d = Array.from({length:a.length + 1}, (_, i) => [i]); for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) { d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1); } return d[a.length][b.length]; };
+function limparEnfeites(q) {
+  let s = String(q).trim();
+  const base = () => [...s].map(c => c.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()).join("");
+  const INI = /^(uma duvida|uma pergunta|so uma pergunta|uma informacao|me diz(e)?|me diga|me fala|me conta|me responde|por favor|pfv|pf|preciso saber|gostaria de saber|quero saber|deixa eu ver|ei|hey|entao|e ai assistente|oi assistente|ola assistente|olha|escuta)\s*[,:;.!-]?\s+/;
+  for (let k = 0; k < 4; k++) {
+    const b = base(); const m = b.match(INI);
+    const w = b.split(/[\s,:;!-]+/)[0]; const ehAssist = w && w.length >= 8 && lev(w, "assistente") <= 2;
+    if (m && b.length > m[0].length + 1) s = [...s].slice(m[0].length).join("").trim();
+    else if (ehAssist && b.length > w.length + 2) s = [...s].slice(b.indexOf(w) + w.length).join("").replace(/^[\s,:;!.-]+/, "").trim();
+    else break;
+  }
+  const FIM = /(\s*(por favor|pfv|rapidinho|ai|aí|hein|blz|beleza|ok|obrigad[oa])?\s*[!?.…]*)$/i;
+  for (let k = 0; k < 3; k++) { const t = s.replace(/\s+(por favor|pfv|rapidinho|ai|aí|hein|blz)\s*[!?.…]*$/i, "").replace(/\s*[!?.…]{2,}$/, "?"); if (t === s || t.split(" ").length < 1) break; s = t; }
+  return s || String(q);
+}
+let VOC_MAT = null;
+function vocMateriais() {
+  if (VOC_MAT && VOC_MAT.n === Object.keys(S.items).length) return VOC_MAT;
+  const fr = new Set(); APELIDOS.forEach(g => g.forEach(x => fr.add(normName(x))));
+  Object.values(S.items).forEach(i => { const w = normName(i.descricao).split(" "); fr.add(w[0]); if (w[1]) fr.add(w[0] + " " + w[1]); });
+  return VOC_MAT = {n:Object.keys(S.items).length, frases:[...fr].filter(x => x.length >= 3)};
+}
+function corrigirTermo(termo) { // "DAA SHOW" -> "DATA SHOW", "MICRLSCOPIOOS" -> "MICROSCOPIO"
+  const t = normName(termo).replace(/S$/, ""); if (t.length < 4) return null;
+  let best = null, bd = 99;
+  vocMateriais().frases.forEach(f => { const g = f.replace(/S$/, ""); if (Math.abs(g.length - t.length) > 3) return; const d = levLong(t, g); const lim = g.length >= 8 ? 3 : g.length >= 5 ? 2 : 1; if (d <= lim && d < bd) { bd = d; best = f; } });
+  return best;
+}
+const levLong = (a, b) => { const d = Array.from({length:a.length + 1}, (_, i) => [i]); for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) { d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1); } return d[a.length][b.length]; };
+const VERBOS_DEST = ["DESTINAR","DESTINE","MANDAR","MANDE","MANDA","ENVIAR","ENVIE","ENVIA","LIBERAR","LIBERE","LIBERA","ENCAMINHAR","ENCAMINHE","REPASSAR","REPASSE","ENTREGAR","ENTREGUE"];
+function corrigirVerbo(q) { // "libee 5 cadeiras" -> "libere 5 cadeiras"
+  const w = q.split(/\s+/); for (let i = 0; i < Math.min(4, w.length); i++) { const n = normName(w[i]); if (n.length < 4 || VERBOS_DEST.includes(n)) continue;
+    let best = null, bd = 99; VERBOS_DEST.forEach(v => { const d = levLong(n, v); if (d <= (v.length >= 7 ? 2 : 1) && d < bd) { bd = d; best = v; } }); if (best) { w[i] = best.toLowerCase(); return w.join(" "); } }
+  return q;
+}
+function localAnswer(q, msg, _tentou) {
+  q = corrigirVerbo(limparEnfeites(q));
   const n0 = normName(q).replace(/[?!.,;:()"“”]/g, " ").replace(/\s+/g, " ").trim();
   if (AS.slot && /^(SIM|PODE|PODE SER|OK|CERTO|QUERO|CONFIRMO|ISSO|CLARO|VAMOS)\b/.test(n0) && AS.slot.sugQtd) { const s = AS.slot; s.qtd = s.sugQtd; delete s.sugQtd; return chatDeterminarMontar(s, msg); }
   if (AS.slot && /^(NAO|CANCELA|CANCELAR|DEIXA|ESQUECE)\b/.test(n0)) { AS.slot = null; return "Tudo bem, não registrei nada."; }
   const cv = conversaNormal(n0, msg); if (cv) return cv;
   const dc = chatDecisao(q, msg); if (dc) return dc;
   let nl; try { nl = nluEntender(q); } catch (e) { console.error(e); nl = {intent:null, score:0, ents:{}, rank:[]}; }
+  if (nl.intent === "entregas" && !nl.ents.uni && !nl.ents.mat && /\b(TEMOS|TEM|HA|EXISTE\w*|DISPONIVE\w*|SALDO|ESTOQUE)\b/.test(nl.n || "") && !/\b(ENTREG|RECEB|CHEG|DESTINAD|MANDAD|ENVIAD|SAIU|SAIRAM)\w*/.test(nl.n || "") && /\bHOJE\b/.test(nl.n || "") && !AS._fuzzy) { AS._fuzzy = true; try { return localAnswer(nl.n.replace(/\bHOJE\b/, "").trim(), msg); } finally { AS._fuzzy = false; } } // "quantos bens temos hoje" é saldo, não entrega de hoje
+  if (nl.ents && nl.ents.uni && (["resumo","est_total"].includes(nl.intent) || /^COMO (ESTA|ANDA|VAI|FICA)\b/.test(nl.n || ""))) { nl.intent = "unidade_info"; nl.score = Math.max(nl.score, 0.6); } // "como está o CCS hoje?" é sobre a unidade
   const curta = nl.n && nl.n.split(" ").length <= 6;
   // pergunta de continuação: "e de cadeiras?", "e para o CCS?", "e no mês passado?"
   if (AS.ctx && curta && /^(E|E DE|E DO|E DA|E PARA|E NO|E NA|E O|E A|E OS|E AS|E SE|E QUANTO|E EM)\b/.test(nl.n) && (nl.ents.mat || nl.ents.cat || nl.ents.uni || nl.ents.per || nl.ents.qtd || nl.ents.sit)) {
@@ -4174,6 +4233,7 @@ function localAnswer(q, msg) {
   // pergunta de saldo sobre algo que não existe no catálogo: resposta objetiva
   if (/^(TEM|TEMOS|AINDA TEM|EXISTE|EXISTEM|HA|POSSUI|POSSUIMOS|TERIA|QUANT\w*|SALDO|ESTOQUE)\b/.test(nl.n || "") && !nl.ents.mat && !nl.ents.cat && !nl.ents.uni && !nl.ents.plano && !nl.ents.emp) {
     const termo = (nl.n || "").split(" ").filter(w => w.length > 2 && !NLU_STOP.has(w) && !/^(TEM|TEMOS|AINDA|EXISTE|EXISTEM|POSSUI|POSSUIMOS|TERIA|QUANTOS|QUANTAS|QUANTO|QUANTA|SALDO|ESTOQUE|RESERVA|TECNICA|DISPONIVEL|DISPONIVEIS|HOJE|AGORA|SOBRANDO|ALGUM|ALGUMA|UNIDADES|BENS|ITENS)$/.test(w)).join(" ");
+    if (termo && !AS._fuzzy) { const c = corrigirTermo(termo); if (c && c !== termo) { AS._fuzzy = true; try { const r = localAnswer(nl.n.replace(termo, c), msg); if (r) return r; } finally { AS._fuzzy = false; } } }
     if (termo) {
       const tri = s => { const o = new Set(); const t = " " + s + " "; for (let i = 0; i < t.length - 2; i++) o.add(t.slice(i, i + 3)); return o; };
       const T = tri(termo); const st = computeStock();
@@ -4197,8 +4257,8 @@ function localAnswerRegras(q, msg) {
   const sm = n.match(SAUD);
   if (sm) { const resto = n.slice(sm[0].length).trim(); if (resto.split(" ").length >= 2) n = resto; else {
     const k = tIndicadores(), pend = (k.minhas_pendencias || []).length, P = panorama();
-    act({tipo:"abrir_tela", tela:"reserva", rotulo:"Ver a reserva técnica"});
-    return `${saudacao()}${nome ? ", " + esc(nome) : ""}! ${pend ? `Você tem **${plural(pend, "pendência", "pendências")}** no seu perfil.` : "Você não tem pendências agora."} Hoje a reserva tem **${fmtN(P.sg)} bens sob guarda**, ${fmtN(P.dp)} disponíveis para destinar.\n\nPergunte o que precisar, por exemplo: “quantos ar-condicionados temos?”, “o que aguarda a minha assinatura?” ou “empenhos aguardando tombamento”.`; } }
+
+    return `${saudacao()}${nome ? ", " + esc(nome) : ""}! Em que posso ajudar?`; } }
   if (/^(MUITO )?(OBRIGAD\w*|VALEU|BRIGAD\w*|AGRADEC\w*|GRAT[OA]|PERFEITO|OTIMO|BELEZA|SHOW|OK|CERTO|BLZ)\b/.test(n) && n.split(" ").length <= 4) return "Por nada! Se precisar de mais alguma informação da reserva, é só perguntar.";
   if (/^(TUDO BEM|TUDO BOM|COMO VAI|COMO VOCE ESTA)\b/.test(n)) return `Tudo certo por aqui${nome ? ", " + esc(nome) : ""}. Em que posso ajudar com a reserva técnica?`;
   if (/^(AJUDA|HELP|MENU|COMANDOS|ME AJUDA|ME AJUDE|PODE ME AJUDAR|PODERIA ME AJUDAR|PRECISO DE AJUDA|PRECISO DE UMA INFORMACAO|PRECISO DE INFORMACOES|TENHO UMA DUVIDA|UMA DUVIDA|O QUE (VOCE|VC) (FAZ|SABE|PODE)|COMO (FUNCIONA|TE USAR|USAR)|QUEM (E|EH) VOCE)\b/.test(n))

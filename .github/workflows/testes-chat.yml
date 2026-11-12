@@ -22,3 +22,5 @@ jobs:
         run: python tests/rodar_chat.py
       - name: Variações geradas
         run: python tests/variacoes.py
+      - name: 20 mil perguntas com erros de português (mínimo de 98,5% de acerto)
+        run: python tests/rodar_massa.py 20000 --paginas 4 --minimo 0.985

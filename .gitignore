@@ -1,3 +1,4 @@
 # Não versione segredos
 *.local.js
 .env
+tests/massa-falhas.json

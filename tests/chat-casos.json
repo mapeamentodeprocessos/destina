@@ -503,6 +503,87 @@
      ]
     }
    ]
+  },
+  {
+   "nome": "Sigla curta como palavra inteira (CE não é CENTRO)",
+   "persona": "u_cons",
+   "msgs": [
+    {
+     "q": "como esta o ce",
+     "tem": [
+      "CE - CENTRO DE EDUCAÇÃO",
+      "1 plano em andamento"
+     ]
+    },
+    {
+     "q": "planos do ct",
+     "tem": [
+      "CT - CENTRO DE TECNOLOGIA"
+     ]
+    },
+    {
+     "q": "como esta o biblioteca central hoje",
+     "tem": [
+      "BIBLIOTECA CENTRAL"
+     ],
+     "nao": [
+      "Não houve entregas"
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Enfeites, abreviações e erros de digitação",
+   "persona": "u_pat",
+   "msgs": [
+    {
+     "q": "uma duvida: situacao do PD 0009/2026 rapidinho",
+     "tem": [
+      "PD 0009/2026"
+     ]
+    },
+    {
+     "q": "assistetne, boa noite?",
+     "nao": [
+      "pendên"
+     ]
+    },
+    {
+     "q": "o q tenho p/ hoje ai",
+     "tem": [
+      "pendência"
+     ]
+    },
+    {
+     "q": "quantos bens temos hoje",
+     "tem": [
+      "bens sob guarda"
+     ]
+    },
+    {
+     "q": "saldo de ddashow?",
+     "tem": [
+      "Projetor"
+     ]
+    },
+    {
+     "q": "libee 5 cadeira giratoria para o CT!",
+     "comeca": "**300 disponíveis**"
+    },
+    {
+     "q": "muito obriigada hoje",
+     "nao": [
+      "bens",
+      "PD "
+     ]
+    },
+    {
+     "q": "oi, gargalos??",
+     "tem": [
+      "prazo"
+     ]
+    }
+   ]
   }
  ]
 }
