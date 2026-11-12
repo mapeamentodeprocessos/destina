@@ -1060,7 +1060,7 @@ let SBSIG = "", SBTIMER = null;
 async function sbCarregarMe() {
   const u = SB.s.user; const p = (await SB.req("perfis?id=eq." + u.id + "&select=*"))[0];
   S.mePerfil = p || null;
-  S.me = {id:u.id, name:(p && p.nome) || u.email, email:u.email, roles:p && p.aprovado ? p.papeis.slice() : []};
+  S.me = {id:u.id, name:(p && p.nome) || u.email, email:u.email, roles:p && p.aprovado ? p.papeis.slice() : [], teste:!!(p && p.teste)};
   S.existeAdmin = await SB.rpc("existe_admin").catch(() => true);
 }
 async function sbLoad(force) {
@@ -1297,7 +1297,7 @@ function renderShell() {
   $("#top").innerHTML = `
     <button class="search" data-act="cmd" aria-label="Buscar">${ic("busca")}<span>Buscar bens, planos, unidades ou ações</span><kbd>Ctrl K</kbd></button>
     <div class="top-right">
-      <button class="mode-chip ${S.mode}" data-act="${S.mode === "oficial" ? "who" : (S.officialAvailable ? "to-oficial" : "about-mode")}" title="Ambiente atual"><i></i><span>${S.mode === "oficial" ? "Oficial" : "Demonstração"}</span></button>
+      <button class="mode-chip ${S.mode}" data-act="${S.mode === "oficial" ? "who" : (S.officialAvailable ? "to-oficial" : "about-mode")}" title="Ambiente atual"><i></i><span>${S.mode === "oficial" ? (S.me && S.me.teste ? "Oficial · conta de teste" : "Oficial") : "Demonstração"}</span></button>
       ${podeChat() ? `<button class="btn ghost sm layout-btn" data-act="layout-conversa" title="Usar só o assistente, em tela cheia"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Modo conversa</span></button>` : ""}
       <button class="btn ghost icon-btn" data-act="theme" aria-label="Alternar tema claro ou escuro">${ic(document.documentElement.dataset.theme === "dark" ? "sun" : "moon")}</button>
       <button class="who" data-act="who" aria-label="Trocar perfil">${av}<span class="t"><b>${esc(S.me.name || "Você")}</b><small>${esc(roleLabel)}</small></span></button>
@@ -1878,7 +1878,8 @@ const fmtSemana = t => new Date(t).toLocaleDateString("pt-BR", {weekday:"long"})
 function planOrigem(p) {
   const d = detList().find(x => x.planoId === p.id);
   if (d) { const sg = S.cfg.signatarios[d.papel] || {}; const pr = d.propostoPapel && ROLES[d.propostoPapel] ? `proposta ${/^Almox/.test(ROLES[d.propostoPapel].label) ? "do" : "da"} ${ROLES[d.propostoPapel].label} e ` : "";
-    return {decisao:true, txt:`${pr}decisão assinada ${d.papel === "REITORIA" ? "da" : "do"} ${sg.cargo || d.papel}${sg.nome ? " " + sg.nome : ""}`}; }
+    const quem = (d.assinatura && d.assinatura.nome) || sg.nome;
+    return {decisao:true, txt:`${pr}decisão assinada ${d.papel === "REITORIA" ? "da" : "do"} ${sg.cargo || d.papel}${quem ? " " + quem : ""}`}; }
   if (/^Destinação determinada por decisão/.test(p.justificativa || "")) return {decisao:true, txt:"decisão assinada da autoridade"};
   const ev = (p.eventos || [])[0]; const r = ev && ROLES[ev.role] ? ROLES[ev.role].label : "";
   return {decisao:false, txt:r ? `iniciativa ${/^(Almox|Divis)/.test(r) ? (r.startsWith("Almox") ? "do " : "da ") : "de "}${r}` : ""};
@@ -2153,7 +2154,7 @@ async function act_sign(id) {
     ${intact ? "" : `<div class="alert critical" style="margin-bottom:12px"><div class="ic">${ic("alert")}</div><div><b>O conteúdo mudou depois da formalização</b><p>O hash atual não confere com o registrado na submissão. Recomenda-se indeferir e pedir nova instrução.</p></div></div>`}
     <div style="background:var(--panel-2);padding:16px;border-radius:12px">${await docAutorizacao(p0, true)}</div>
     <hr>
-    <label class="check"><input type="checkbox" id="dec"> <span>Declaro que revisei o termo e, na qualidade de <b>${esc(S.cfg.signatarios[role].cargo)}</b>, autorizo a destinação dos bens nele relacionados.</span></label>`,
+    <label class="check"><input type="checkbox" id="dec"> <span>Eu, <b>${esc(S.me.name)}</b>${S.me.teste ? " (conta de teste)" : ""}, declaro que revisei o termo e, na qualidade de <b>${esc(S.cfg.signatarios[role].cargo)}</b>, autorizo a destinação dos bens nele relacionados.</span></label>`,
     foot:`<button class="btn" data-act="close">Voltar</button><button class="btn primary" id="go" disabled>${ic("autorizacoes")}Assinar eletronicamente</button>`});
   $("#dec", m).onchange = e => $("#go", m).disabled = !e.target.checked;
   $("#go", m).onclick = async () => {
@@ -2779,7 +2780,7 @@ function assinarDecisao(dados, opts = {}) {
     const m = openModal({title:opts.titulo || "Assinar a decisão de destinação", sub:"A decisão assinada inicia o plano e avisa a Formalização", body:`
       <div class="alert good" style="margin-bottom:12px"><div class="ic">${ic("check")}</div><div><b>Disponibilidade conferida</b><p>${itens.map(i => `${fmtN(i.quantidade)} × ${esc(i.it ? i.it.descricao : i.descricao || "")} · ${fmtN(i.it && st[i.it.id] ? Math.max(0, st[i.it.id].disp) : 0)} disponíveis hoje`).join("<br>")}</p></div></div>
       <table class="tbl"><tbody><tr><td class="muted">Destino</td><td><b>${esc(dados.unidade)}</b></td></tr>${opts.proposta ? `<tr><td class="muted">Proposta</td><td>${esc(opts.proposta.numero)} · ${esc(nameOf(opts.proposta.propostoPor))} (${esc((ROLES[opts.proposta.propostoPapel] || {}).label || opts.proposta.propostoPapel || "")}), ${fmtD(opts.proposta.propostoEm || opts.proposta.criadoEm)}</td></tr>` : ""}${dados.observacao ? `<tr><td class="muted">Observação</td><td>${esc(dados.observacao)}</td></tr>` : ""}</tbody></table>
-      <hr><label class="check"><input type="checkbox" id="ad-dec"> <span>Na qualidade de <b>${esc(sg.cargo || R())}</b>${sg.nome ? ` (${esc(sg.nome)})` : ""}, decido pela destinação acima e autorizo o início do plano.</span></label>`,
+      <hr><label class="check"><input type="checkbox" id="ad-dec"> <span>Eu, <b>${esc(S.me.name)}</b>${S.me.teste ? " (conta de teste)" : ""}, na qualidade de <b>${esc(sg.cargo || R())}</b>, decido pela destinação acima e autorizo o início do plano.</span></label>`,
       foot:`<button class="btn" data-act="close">Voltar</button><button class="btn primary" id="ad-go" disabled>${ic("autorizacoes")}Assinar e iniciar o plano</button>`});
     let fim = false; const done = v => { if (!fim) { fim = true; resolve(v); } };
     const ob = new MutationObserver(() => { if (!document.body.contains(m)) { ob.disconnect(); setTimeout(() => { if (!fim && !$(".modal")) done(false); }, 0); } });
