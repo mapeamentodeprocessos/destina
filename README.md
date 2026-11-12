@@ -80,3 +80,14 @@ Em **Configurações › Estrutura organizacional › Atualizar estrutura**, env
 - A assinatura é eletrônica interna (autoria + hash). Para valor jurídico pleno, anexe o termo ao processo no SIPAC ou integre assinatura gov.br.
 - Ainda não há: entrega parcial, devolução/ajuste de estoque, pedidos das unidades, avisos por e-mail e modo offline.
 - LGPD: o sistema guarda nome e SIAPE de recebedores e o registro do assistente; publique um aviso de privacidade e defina prazo de retenção.
+
+## Testes do assistente
+
+Toda mudança no `index.html` roda automaticamente no GitHub (aba **Actions → Testes do assistente**):
+
+- `tests/chat-casos.json`: conversas reais, incluindo cada bug já reportado, com o que deve e o que não pode aparecer na resposta.
+- `tests/variacoes.py`: centenas de variações geradas (jeitos de pedir destinação, de perguntar saldo, cumprimentos). Regra: pedido de destinação começa pela disponibilidade; pergunta de saldo responde saldo; cumprimento não traz pendências.
+
+Para rodar no computador: `pip install playwright && python -m playwright install chromium`, depois `python tests/rodar_chat.py` e `python tests/variacoes.py`.
+
+**Bug novo no chat:** clique em "Resposta errada?" embaixo da resposta e descreva o que deveria acontecer. O gestor baixa os reportes em Monitoramento → Registro do assistente ("Baixar reportes como casos de teste"). Cada reporte vira um caso em `tests/chat-casos.json`, e a correção só é aceita quando todos os casos passam.

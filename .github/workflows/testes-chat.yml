@@ -1,0 +1,24 @@
+name: Testes do assistente
+
+on:
+  push:
+    paths: ["index.html", "tests/**", ".github/workflows/testes-chat.yml"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  chat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Instalar o navegador de teste
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Conversas registradas (inclui os bugs já corrigidos)
+        run: python tests/rodar_chat.py
+      - name: Variações geradas
+        run: python tests/variacoes.py

@@ -1,0 +1,487 @@
+{
+ "_como_usar": "Cada caso é uma conversa: persona + mensagens em sequência. Em cada mensagem, 'tem' (texto que deve aparecer), 'nao' (texto que não pode aparecer), 'botao' (rótulo de botão esperado), 'sem_botao' (rótulo que não pode aparecer), 'comeca' (início da resposta). Para registrar um bug novo, copie um caso, cole a conversa que deu errado e diga o que deveria acontecer.",
+ "casos": [
+  {
+   "nome": "Cumprimento não lista pendências",
+   "persona": "u_reit",
+   "msgs": [
+    {
+     "q": "olá, boa noite",
+     "comeca": "Boa noite",
+     "nao": [
+      "pendên",
+      "plano",
+      "notebook"
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Cumprimento simples",
+   "persona": "u_pat",
+   "msgs": [
+    {
+     "q": "oi",
+     "nao": [
+      "pendên",
+      "PD "
+     ]
+    },
+    {
+     "q": "bom dia",
+     "comeca": "Bom dia"
+    },
+    {
+     "q": "boa tarde",
+     "comeca": "Boa tarde"
+    }
+   ]
+  },
+  {
+   "nome": "Adiar e desconsiderar",
+   "persona": "u_reit",
+   "msgs": [
+    {
+     "q": "quais as pendências ?",
+     "tem": [
+      "pendência"
+     ]
+    },
+    {
+     "q": "perfeito, mas deixe pra depois",
+     "tem": [
+      "depois"
+     ],
+     "nao": [
+      "prefeito",
+      "PREFEITO"
+     ]
+    },
+    {
+     "q": "desconsidere esse plano",
+     "tem": [
+      "desconsiderei|deixei de lado"
+     ],
+     "nao": [
+      "PD "
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Destinação guiada com escolha de modelo",
+   "persona": "u_reit",
+   "msgs": [
+    {
+     "q": "quero fazer uma destinação de um ar condicionado",
+     "tem": [
+      "opções",
+      "disponíveis"
+     ]
+    },
+    {
+     "q": "Ar-condicionado split inverter 12.000 BTUs",
+     "tem": [
+      "disponíveis",
+      "unidade"
+     ],
+     "nao": [
+      "12 ×"
+     ]
+    },
+    {
+     "q": "para o CCEN",
+     "tem": [
+      "disponíveis",
+      "CCEN"
+     ],
+     "botao": [
+      "Assinar e iniciar o plano"
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Quantidade por extenso e unidade sem preposição",
+   "persona": "u_reit",
+   "msgs": [
+    {
+     "q": "preciso destinar cinco ar condicionado",
+     "tem": [
+      "opções"
+     ]
+    },
+    {
+     "q": "Ar-condicionado split inverter 24.000 BTUs",
+     "tem": [
+      "5"
+     ]
+    },
+    {
+     "q": "Biblioteca Central",
+     "tem": [
+      "5 × ",
+      "BIBLIOTECA CENTRAL"
+     ],
+     "botao": [
+      "Assinar e iniciar o plano"
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Disponibilidade sempre primeiro (proponente)",
+   "persona": "u_pat",
+   "msgs": [
+    {
+     "q": "quero mandar um projetor para o CCEN",
+     "comeca": "**35 disponíveis**",
+     "botao": [
+      "Enviar para o autorizador"
+     ],
+     "sem_botao": [
+      "Assinar e iniciar o plano",
+      "Montar plano de destinação"
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Disponibilidade sempre primeiro (autorizador)",
+   "persona": "u_pra",
+   "msgs": [
+    {
+     "q": "quero mandar um projetor para o CCEN",
+     "comeca": "**35 disponíveis**",
+     "botao": [
+      "Assinar e iniciar o plano"
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Item inexistente",
+   "persona": "u_pat",
+   "msgs": [
+    {
+     "q": "quero mandar um drone para o CCEN",
+     "tem": [
+      "Não há drone disponível"
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Pedido acima do saldo",
+   "persona": "u_reit",
+   "msgs": [
+    {
+     "q": "destinar 500 notebooks para o CT",
+     "tem": [
+      "Só há 100 disponíveis"
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Formalização não inicia destinação",
+   "persona": "u_form",
+   "msgs": [
+    {
+     "q": "quero destinar 10 cadeiras para o CCS",
+     "tem": [
+      "disponíveis",
+      "autorizador"
+     ],
+     "sem_botao": [
+      "Assinar e iniciar o plano",
+      "Enviar para o autorizador"
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Total sem avisos não pedidos",
+   "persona": "u_pat",
+   "msgs": [
+    {
+     "q": "quantos bens temos?",
+     "tem": [
+      "bens sob guarda"
+     ],
+     "nao": [
+      "Atenção",
+      "aguardando assinatura",
+      "pendên"
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Disponibilidade por nome popular",
+   "persona": "u_cons",
+   "msgs": [
+    {
+     "q": "quantos data show temos",
+     "tem": [
+      "Projetor"
+     ]
+    },
+    {
+     "q": "tem cadeira disponível?",
+     "tem": [
+      "disponíveis"
+     ]
+    },
+    {
+     "q": "tem geladeira?",
+     "tem": [
+      "Refrigerador"
+     ]
+    },
+    {
+     "q": "tem mesa?",
+     "tem": [
+      "Mesa"
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Erros de digitação",
+   "persona": "u_cons",
+   "msgs": [
+    {
+     "q": "qunatos bens temos",
+     "tem": [
+      "bens sob guarda"
+     ]
+    },
+    {
+     "q": "cadeiras disponiveis",
+     "tem": [
+      "disponíveis"
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Acompanhar plano",
+   "persona": "u_cons",
+   "msgs": [
+    {
+     "q": "onde está o PD 0009/2026",
+     "tem": [
+      "PD 0009/2026",
+      "Previsão"
+     ]
+    },
+    {
+     "q": "quando chegam os bens do CCJ?",
+     "tem": [
+      "PD 0011/2026",
+      "previsão"
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Pendências por perfil",
+   "persona": "u_form",
+   "msgs": [
+    {
+     "q": "quais as pendências?",
+     "tem": [
+      "Formalizar"
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Assinar termo de outro nível",
+   "persona": "u_reit",
+   "msgs": [
+    {
+     "q": "autorize o PD 0009/2026",
+     "tem": [
+      "não depende da sua assinatura"
+     ],
+     "nao": [
+      "1 Termo"
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Quem autoriza",
+   "persona": "u_cons",
+   "msgs": [
+    {
+     "q": "quem autoriza?",
+     "tem": [
+      "Autorizador nível 1",
+      "Autorizador nível 2"
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Cortesia e identidade",
+   "persona": "u_pat",
+   "msgs": [
+    {
+     "q": "obrigado",
+     "nao": [
+      "PD ",
+      "pendên"
+     ]
+    },
+    {
+     "q": "quem é você?",
+     "tem": [
+      "Assistente"
+     ]
+    },
+    {
+     "q": "qual a capital da França?",
+     "nao": [
+      "PD ",
+      "disponíveis"
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Valor e parados",
+   "persona": "u_reit",
+   "msgs": [
+    {
+     "q": "qual o valor total da reserva?",
+     "tem": [
+      "R$"
+     ]
+    },
+    {
+     "q": "quais itens estão parados?",
+     "tem": [
+      "parado"
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Empenhos",
+   "persona": "u_pat",
+   "msgs": [
+    {
+     "q": "empenhos aguardando tombamento",
+     "tem": [
+      "tombamento"
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Perguntas comuns não viram item inexistente",
+   "persona": "u_reit",
+   "msgs": [
+    {
+     "q": "tem novidade?",
+     "tem": [
+      "movimenta"
+     ],
+     "nao": [
+      "Não há “novidade”"
+     ]
+    },
+    {
+     "q": "quantos dias faltam",
+     "tem": [
+      "previsão|Previsão|a caminho"
+     ],
+     "nao": [
+      "Entendi"
+     ]
+    },
+    {
+     "q": "tem proposta para eu decidir?",
+     "tem": [
+      "proposta"
+     ],
+     "nao": [
+      "Não há “proposta"
+     ]
+    },
+    {
+     "q": "existe algum problema?",
+     "nao": [
+      "PRODEMA",
+      "prodema"
+     ]
+    },
+    {
+     "q": "tem algo para eu assinar?",
+     "tem": [
+      "PD 0008/2026"
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Pedido de unidade vira destinação",
+   "persona": "u_reit",
+   "msgs": [
+    {
+     "q": "a STI precisa de dez notebooks, pode mandar?",
+     "comeca": "**100 disponíveis**",
+     "tem": [
+      "10 × "
+     ],
+     "botao": [
+      "Assinar e iniciar o plano"
+     ]
+    },
+    {
+     "q": "o CCS pediu 3 geladeiras",
+     "comeca": "**22 disponíveis**",
+     "tem": [
+      "3 × "
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Saldo de item inexistente",
+   "persona": "u_pat",
+   "msgs": [
+    {
+     "q": "quantos drone temos",
+     "tem": [
+      "Não há drone"
+     ]
+    },
+    {
+     "q": "quanto temos de drone?",
+     "tem": [
+      "Não há drone"
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Descrição com aspas aparece limpa",
+   "persona": "u_cons",
+   "msgs": [
+    {
+     "q": "tem notebook?",
+     "tem": [
+      "Notebook 14\""
+     ],
+     "nao": [
+      "&quot;"
+     ]
+    }
+   ]
+  }
+ ]
+}

@@ -191,6 +191,8 @@ textarea.inp{min-height:84px;resize:vertical}
 .mrail .s.stop .d{background:var(--crit);border-color:var(--crit)}
 .mrail svg{width:12px;height:12px;color:#fff}
 /* rastreio no estilo "acompanhe seu pedido" */
+.as-rep{display:block;margin:6px 0 0 auto;background:none;border:0;padding:2px 0;font:inherit;font-size:11.5px;color:var(--muted);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.as-rep:hover{color:var(--ink-2)} .as-rep:disabled{text-decoration:none;cursor:default;color:var(--good-ink)}
 .trk{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow);overflow:hidden;margin-bottom:16px}
 .trk-h{display:flex;gap:18px;align-items:stretch;justify-content:space-between;padding:18px 20px 6px;flex-wrap:wrap}
 .trk-h .k{font-size:12.5px;color:var(--muted);font-weight:600}
@@ -2862,10 +2864,20 @@ function chatDecisao(q, msg) {
     if (E.mat) { const prev = s.mat ? new Set(s.mat.its.map(i => i.id)) : null; const exato = Object.values(S.items).find(i => normName(i.descricao) === normName(q.trim())); s.mat = exato ? {...E.mat, its:[exato]} : prev ? {...E.mat, its:E.mat.its.filter(i => prev.has(i.id))} : E.mat; if (!s.mat.its.length) s.mat = E.mat; if (s.mat.its.length === 1) s.escolhido = true; }
     return chatDeterminarMontar(s, msg);
   }
-  const verboDest = /^(QUERO |GOSTARIA DE |POR FAVOR |PODE |PODERIA |VAMOS |PRECISO |PRECISAMOS |DEVEMOS )?(DESTINAR|DESTINE|DESTINA|DETERMINO|DETERMINE|DETERMINAR|MANDE|MANDAR|ENVIE|ENVIAR|ENCAMINHE|ENCAMINHAR|LIBERE|LIBERAR|REPASSE|REPASSAR|DOE|DOAR|ENTREGUE|ENTREGAR)\b|\b(FAZER|FACA|REALIZAR|ABRIR|INICIAR) (UMA |A )?DESTINACAO\b|\bQUERO (UMA |FAZER (UMA )?)?DESTINACAO\b|\bDESTINACAO DE\b|\b(MONTE|MONTAR|CRIE|CRIAR|ABRA|INICIE|INICIAR) (UM |O )?PLANO\b/;
-  if (verboDest.test(n) && (E.mat || E.cat)) {
+  const verboDest = /^(QUERO |GOSTARIA DE |POR FAVOR |PODE |PODERIA |VAMOS |PRECISO |PRECISAMOS |DEVEMOS )?(DESTINAR|DESTINE|DESTINA|DETERMINO|DETERMINE|DETERMINAR|MANDE|MANDAR|ENVIE|ENVIAR|ENCAMINHE|ENCAMINHAR|LIBERE|LIBERAR|REPASSE|REPASSAR|DOE|DOAR|ENTREGUE|ENTREGAR)\b|\b(FAZER|FACA|REALIZAR|ABRIR|INICIAR) (UMA |A )?DESTINACAO\b|\bQUERO (UMA |FAZER (UMA )?)?DESTINACAO\b|\bDESTINACAO DE\b|\b(MONTE|MONTAR|CRIE|CRIAR|ABRA|INICIE|INICIAR) (UM |O )?PLANO\b|\bPODE(MOS|RIA|RIAMOS)? (MANDAR|ENVIAR|DESTINAR|LIBERAR|ENCAMINHAR|REPASSAR)\b/;
+  const pedidoUnidade = E.uni && /\b(PRECISA|PRECISAM|NECESSITA|NECESSITAM|SOLICITA|SOLICITOU|SOLICITARAM|PEDIU|PEDIRAM|QUER|QUEREM) (DE )?/.test(n);
+  if ((verboDest.test(n) || pedidoUnidade) && (E.mat || E.cat)) {
     if (!E.qtd) { const W = {UM:1, UMA:1, DOIS:2, DUAS:2, TRES:3, QUATRO:4, CINCO:5, SEIS:6, SETE:7, OITO:8, NOVE:9, DEZ:10, VINTE:20, TRINTA:30, QUARENTA:40, CINQUENTA:50, CEM:100}; const ws = cru, alvo = normName((E.mat ? E.mat.txt : E.cat)).split(" ")[0], ix = ws.findIndex(x => x.startsWith(alvo.slice(0, 3))); if (ix > 0 && NUMW[ws[ix - 1]]) E.qtd = NUMW[ws[ix - 1]]; }
     return chatDeterminarMontar({mat:E.mat, cat:E.cat, qtd:E.qtd, uni:E.uni}, msg);
+  }
+  const DOMINIO = /^(BENS?|ITENS?|ITEM|MATERIA(L|IS)|PLANOS?|ENTREGAS?|EMPENHOS?|UNIDADES?|PENDENCIAS?|TERMOS?|PROPOSTAS?|DECISO(ES)?|DECISAO|USUARIOS?|PERFIS?|CATEGORIAS?|LOTES?|TOMBAMENTOS?|DIAS|PRAZOS?|VALOR|DINHEIRO|RESERVA|SALDO|ESTOQUE|AUTORIZAC\w*|DESTINAC\w*|PROCESSOS?|DOCUMENTOS?|NOVIDADES?|COISAS?|ALGO|ALGUEM|NADA|ATRASOS?|ATRASAD\w*|PROBLEMAS?|ERROS?|ALERTAS?|AVISOS?|URGEN\w*|TEMPO|COMO|QUE|O QUE|QUANT\w*|PRA MIM|PARA MIM|DUVIDAS?|PERGUNTAS?|AJUDA|NOTICIAS?|MAIS|ASSINATURAS?|ASSINAR|DEMANDAS?|PEDIDOS?|SOLICITAC\w*|NOTIFICAC\w*|MENSAGE\w*|EMAILS?|E MAILS?)\b/;
+  const perguntaSaldo = n.match(/^(?:QUANTOS?|QUANTAS?) (.+?) (?:TEMOS|TEM|HA|EXISTEM|EXISTE|SOBRARAM|RESTAM|DISPONIVE\w*)\b/) || n.match(/^QUANTO (?:TEMOS|TEM|HA) DE (.+?)$/) || n.match(/^(?:TEM|TEMOS|HA|EXISTE|EXISTEM) (?:ALGUM |ALGUMA |ALGUNS |ALGUMAS )?(.+?)(?: DISPONIVE\w*| NA RESERVA| EM ESTOQUE| SOBRANDO)?$/) || n.match(/^(?:SALDO|ESTOQUE|DISPONIBILIDADE) (?:DE|DO|DA|DOS|DAS) (.+?)$/) || n.match(/^QUAL (?:O|A) (?:SALDO|ESTOQUE|DISPONIBILIDADE) (?:DE|DO|DA|DOS|DAS) (.+?)$/);
+  if (perguntaSaldo && !E.mat && !E.cat && !E.uni && !DOMINIO.test(perguntaSaldo[1]) && perguntaSaldo[1].split(" ").length <= 4 && !/\b(PD|DT|NE)\b|\d{4}/.test(perguntaSaldo[1])) {
+    const termo = normName(q).replace(/[?!.,;:]/g, " ").split(/\s+/).filter(w => perguntaSaldo[1].split(" ").some(x => x.startsWith(w.slice(0, 4)) || w.startsWith(x.slice(0, 4)))).join(" ").toLowerCase() || perguntaSaldo[1].toLowerCase();
+    const pal = perguntaSaldo[1].split(" ").filter(w => w.length > 3 && !/^(DISPONIVE|RESERVA|AINDA|AGORA)/.test(w));
+    const viz = Object.values(S.items).filter(i => computeStock()[i.id].disp > 0 && pal.some(w => normName(i.descricao).includes(w.slice(0, 5))));
+    if (viz.length) msg.sug = viz.slice(0, 3).map(i => `Tem ${i.descricao}?`);
+    return `**Não há ${esc(termo)}** na reserva técnica no momento.${viz.length ? " Itens parecidos com saldo:\n" + viz.slice(0, 3).map(i => `- ${esc(i.descricao)}: ${fmtN(computeStock()[i.id].disp)} disponíveis`).join("\n") : ""}`;
   }
   if (verboDest.test(n)) { // pediu para destinar algo que não está na reserva: a primeira informação é a disponibilidade
     const ws = normName(q).replace(/[?!.,;:]/g, " ").split(/\s+/).filter(Boolean);
@@ -3394,7 +3406,7 @@ async function persistOrg(rows, meta) {
 // ASSISTENTE DESTINA — perguntas em linguagem natural, ações por clique, log
 // =====================================================================
 const AS = {open:false, turns:[], msgs:[], busy:false, ctl:null, status:"", sample:null, tools:false, myLog:null};
-const TELAS = {painel:"Painel", reserva:"Reserva técnica", empenhos:"Empenhos e tombamento", planos:"Planos de destinação", autorizacoes:"Autorizações", entregas:"Separação e entrega", monitoramento:"Monitoramento", documentos:"Documentos e autenticidade", configuracoes:"Configurações"};
+const TELAS = {painel:"Painel", reserva:"Reserva técnica", empenhos:"Empenhos e tombamento", planos:"Planos de destinação", acompanhar:"Acompanhar destinações", autorizacoes:"Autorizações", entregas:"Separação e entrega", monitoramento:"Monitoramento", documentos:"Documentos e autenticidade", configuracoes:"Configurações"};
 const SYN = {GELADEIRA:"REFRIGERADOR", GELADEIRAS:"REFRIGERADOR", "MICRO-ONDAS":"MICROONDAS", SPLIT:"HI-WALL", BEBEDOUROS:"BEBEDOURO", PC:"COMPUTADOR", PCS:"COMPUTADOR", CPU:"COMPUTADOR", CPUS:"COMPUTADOR", DESKTOP:"COMPUTADOR", DESKTOPS:"COMPUTADOR", NOTE:"NOTEBOOK", NOTES:"NOTEBOOK", LAPTOP:"NOTEBOOK", LAPTOPS:"NOTEBOOK", "AR-CONDICIONADO":"AR CONDICIONADO", ARES:"AR"};
 // nomes populares ↔ nomes do catálogo: cada linha é um grupo de equivalentes (a busca tenta todos)
 const APELIDOS = [
@@ -3684,7 +3696,10 @@ const NLU_MODELOS = {
   unidade_info:["como esta o <UNI>","situacao do <UNI>","o que tem para o <UNI>","planos do <UNI>","o que o <UNI> pediu","demandas do <UNI>","<UNI>"],
   planos:["quantos planos temos","planos em andamento","lista de planos","planos <SIT>","quais planos estao <SIT>","quantos planos <SIT>","planos ativos","processos de destinacao abertos","situacao dos planos","como estao os planos"],
   assinaturas:["o que aguarda minha assinatura","termos para assinar","quais termos aguardam assinatura","pendencias de assinatura","o que falta assinar","autorizacoes pendentes","o que a reitora precisa assinar","o que o pro reitor precisa assinar","tenho algo para assinar"],
-  atrasos:["planos atrasados","o que esta atrasado","planos acima do prazo","gargalos","onde esta travado","o que esta demorando","prazos estourados","quais etapas estao lentas"],
+  propostas:["tem proposta para eu decidir","propostas aguardando decisao","propostas pendentes","o que preciso decidir","quais propostas","minhas propostas","propostas de destinacao","tem decisao pendente","o que aguarda minha decisao","proposta da divisao de patrimonio"],
+  novidades:["tem novidade","novidades","o que ha de novo","o que mudou","ultimas movimentacoes","o que aconteceu hoje","o que aconteceu esta semana","alguma novidade","o que tem de novo","atualizacoes recentes"],
+  prazos:["quantos dias faltam","quando chega","previsao de entrega","quando fica pronto","prazo de entrega","quando os bens chegam","quando sera entregue","previsao dos planos","o que chega primeiro","datas previstas"],
+  atrasos:["existe algum problema","tem algum problema","algo errado","algum risco","tem alerta","o que esta dando problema","planos atrasados","o que esta atrasado","planos acima do prazo","gargalos","onde esta travado","o que esta demorando","prazos estourados","quais etapas estao lentas"],
   operacao:["o que esta pronto para entregar","o que separar hoje","o que o almoxarifado precisa separar","entregas pendentes","o que falta entregar","fila de separacao","proximas entregas"],
   pendencias:["minhas pendencias","o que eu preciso fazer","o que tenho para hoje","tarefas pendentes","o que depende de mim"],
   pode_atender:["da para atender <QTD> <MAT>","consigo entregar <QTD> <MAT> para <UNI>","temos <QTD> <MAT> para <UNI>","e possivel destinar <QTD> <MAT>","tem <QTD> <MAT> disponiveis","podemos atender o pedido de <QTD> <MAT>"],
@@ -3705,7 +3720,7 @@ function nluPrep() {
   CATS.forEach(add); ORG.list.forEach(u => add(u.name)); APELIDOS.flat().forEach(add);
   Object.values(NLU_MODELOS).flat().forEach(add); Object.keys(NLU_SIN).forEach(add); Object.values(NLU_SIN).forEach(add); NLU_MESES.forEach(add);
   "HOJE ONTEM SEMANA PASSADA PASSADO ULTIMOS ULTIMAS DIAS MESES ANO ENTREGUE ENTREGUES RESERVA DISPONIVEL DISPONIVEIS PLANO PLANOS EMPENHO EMPENHOS TOMBAMENTO TOMBAMENTOS ASSINATURA ASSINAR".split(" ").forEach(w => V.add(w));
-  "UM UMA DOIS DUAS TRES QUATRO CINCO SEIS SETE OITO NOVE DEZ ONZE DOZE QUINZE VINTE TRINTA QUARENTA CINQUENTA CEM PERFEITO PERFEITA DEPOIS DEIXE DEIXA DEIXAR MAS PORQUE PORQUE ENTAO TAMBEM ISSO ISTO AQUILO ESSE ESSA ESTE ESTA DESCONSIDERE DESCONSIDERAR IGNORE ESQUECE ESQUECA CANCELA CANCELAR CERTO CERTA ERRADO CORRETO PRONTO PRONTA AGORA LOGO CEDO TARDE SEMPRE NUNCA TALVEZ CLARO OTIMO OTIMA LEGAL BACANA BELEZA VALEU FAZER FACA FAZENDO FEITO QUERO QUERIA QUEREMOS PRECISO PRECISAMOS PODEMOS DEVEMOS VAMOS VOU VAI FICA FICAR OLHAR VEJO VER VERIFICAR CONFERIR RESOLVER RESOLVO AJUDAR ATENDER PEDIDO DEMANDA UNIDADE ENVIAR MANDAR DESTINAR DESTINACAO PRIMEIRO PRIMEIRA SEGUNDO OUTRO OUTRA OUTROS MESMO MESMA MUITO POUCO BASTANTE NENHUM NENHUMA TODO TODA TODOS TODAS CADA QUAL QUAIS QUANDO ONDE COMO SOBRE ENTRE ATE DESDE BOM BOA DIA DIAS NOITE NOITES TARDE TARDES OLA OBRIGADO OBRIGADA VALEU AJUDA FAVOR QUERO QUERIA GOSTARIA SABER PRECISO PODE PODERIA MOSTRA MOSTRE DIGA FALA FALE ONDE QUANDO COMO QUANTO QUANTA QUANTOS QUANTAS TUDO NADA ALGO ALGUM ALGUMA COISA COISAS GENTE PESSOAL AGORA SEMPRE NUNCA ONTEM AMANHA CERTO ERRADO MELHOR PIOR MAIOR MENOR PRIMEIRO ULTIMO NOVO NOVOS NOVA NOVAS TEMPO HORA HORAS DESDE ENTRE SOBRE PERGUNTA RESPOSTA OBRIGADA".split(" ").forEach(w => V.add(w));
+  "PROBLEMA PROBLEMAS NOVIDADE NOVIDADES PROPOSTA PROPOSTAS DECIDIR FALTAM FALTA PREVISAO CHEGA CHEGAM ERRADO RISCO ALERTA UM UMA DOIS DUAS TRES QUATRO CINCO SEIS SETE OITO NOVE DEZ ONZE DOZE QUINZE VINTE TRINTA QUARENTA CINQUENTA CEM PERFEITO PERFEITA DEPOIS DEIXE DEIXA DEIXAR MAS PORQUE PORQUE ENTAO TAMBEM ISSO ISTO AQUILO ESSE ESSA ESTE ESTA DESCONSIDERE DESCONSIDERAR IGNORE ESQUECE ESQUECA CANCELA CANCELAR CERTO CERTA ERRADO CORRETO PRONTO PRONTA AGORA LOGO CEDO TARDE SEMPRE NUNCA TALVEZ CLARO OTIMO OTIMA LEGAL BACANA BELEZA VALEU FAZER FACA FAZENDO FEITO QUERO QUERIA QUEREMOS PRECISO PRECISAMOS PODEMOS DEVEMOS VAMOS VOU VAI FICA FICAR OLHAR VEJO VER VERIFICAR CONFERIR RESOLVER RESOLVO AJUDAR ATENDER PEDIDO DEMANDA UNIDADE ENVIAR MANDAR DESTINAR DESTINACAO PRIMEIRO PRIMEIRA SEGUNDO OUTRO OUTRA OUTROS MESMO MESMA MUITO POUCO BASTANTE NENHUM NENHUMA TODO TODA TODOS TODAS CADA QUAL QUAIS QUANDO ONDE COMO SOBRE ENTRE ATE DESDE BOM BOA DIA DIAS NOITE NOITES TARDE TARDES OLA OBRIGADO OBRIGADA VALEU AJUDA FAVOR QUERO QUERIA GOSTARIA SABER PRECISO PODE PODERIA MOSTRA MOSTRE DIGA FALA FALE ONDE QUANDO COMO QUANTO QUANTA QUANTOS QUANTAS TUDO NADA ALGO ALGUM ALGUMA COISA COISAS GENTE PESSOAL AGORA SEMPRE NUNCA ONTEM AMANHA CERTO ERRADO MELHOR PIOR MAIOR MENOR PRIMEIRO ULTIMO NOVO NOVOS NOVA NOVAS TEMPO HORA HORAS DESDE ENTRE SOBRE PERGUNTA RESPOSTA OBRIGADA".split(" ").forEach(w => V.add(w));
   NLU.vocab = [...V].filter(w => w.length > 4 || !NLU_SIN[w]);
   NLU.siglas = new Map(); ORG.list.forEach(u => { const s = normName(uSigla(u)).split("/")[0]; if (s && s.length >= 2 && (!NLU.siglas.has(s) || u.path.length < NLU.siglas.get(s).path.length)) NLU.siglas.set(s, u); });
   // modelos já normalizados + idf das palavras
@@ -3957,6 +3972,35 @@ function nluResponder(nl, msg) {
       meus.slice(0, 2).forEach(p => act({tipo:"assinar", plano_id:p.id, rotulo:"Revisar e assinar " + p.numero}));
       if (!meus.length) act({tipo:"abrir_tela", tela:"autorizacoes", rotulo:"Abrir autorizações"});
       return fecha();
+    }
+    case "propostas": {
+      const PR = detPropostas();
+      if (canDeterminar()) {
+        if (!PR.length) return "Nenhuma proposta aguarda a sua decisão.";
+        linhas.push(`**${plural(PR.length, "proposta aguarda", "propostas aguardam")}** a sua decisão:`);
+        linhas.push(lista(PR, d => `- ${esc(d.numero)} · ${esc(d.unidade)}: ${d.itens.map(i => `${fmtN(i.quantidade)} × ${esc(i.descricao)}`).join("; ")} · de ${esc(nameOf(d.propostoPor))}`));
+        act({tipo:"abrir_tela", tela:"planos", rotulo:"Analisar e assinar"}); return fecha();
+      }
+      const M = detList().filter(d => d.propostoPor === S.me.id);
+      if (!M.length) return PR.length ? `${plural(PR.length, "proposta aguarda", "propostas aguardam")} a decisão dos autorizadores.` : "Não há propostas de destinação no momento.";
+      linhas.push(`Suas propostas:`);
+      linhas.push(lista(M, d => `- ${esc(d.numero)} · ${esc(d.unidade)}: ${{PROPOSTA:"aguardando decisão", ATENDIDA:"aprovada, plano " + ((S.plans[d.planoId] || {}).numero || "iniciado"), RECUSADA:"não aprovada" + (d.motivoRecusa ? ` (${esc(d.motivoRecusa)})` : ""), CANCELADA:"retirada"}[d.situacao] || d.situacao}`));
+      return fecha();
+    }
+    case "novidades": {
+      const ev = Object.values(S.plans).flatMap(p => (p.eventos || []).map(e => ({...e, p}))).filter(e => now() - e.at < 7 * DAY).sort((a, b) => b.at - a.at);
+      if (!ev.length) return "Nenhuma movimentação nos últimos 7 dias.";
+      linhas.push(`**${plural(ev.length, "movimentação", "movimentações")}** nos últimos 7 dias. As mais recentes:`);
+      linhas.push(ev.slice(0, 5).map(e => `- ${fmtD(e.at)} · ${esc(e.p.numero)} (${esc(e.p.unidade)}): ${esc(e.msg)}`).join("\n"));
+      act({tipo:"abrir_tela", tela:"acompanhar", rotulo:"Acompanhar destinações"}); return fecha();
+    }
+    case "prazos": {
+      const U = E.uni; const daUni = p => !U || p.unidade === U.name || (U.code && p.unidadeCode === U.code);
+      const P = Object.values(S.plans).filter(daUni).map(p => ({p, I:planTrkInfo(p)})).filter(x => x.I.eta).sort((a, b) => a.I.eta - b.I.eta);
+      if (!P.length) return U ? `Não há destinações a caminho para **${esc(U.name)}** no momento.` : "Não há destinações a caminho no momento.";
+      linhas.push(`**${plural(P.length, "destinação", "destinações")} a caminho.** A próxima entrega prevista é ${esc(P[0].p.numero)} (${esc(P[0].p.unidade)}), até ${fmtLongo(P[0].I.eta)}.`);
+      linhas.push(lista(P.map(x => x), x => `- ${esc(x.p.numero)} · ${esc(x.p.unidade)} · ${esc(x.I.titulo)} · ${x.I.late ? "atrasado, nova previsão" : "previsão"}: até ${fmtLongo(x.I.eta)} (faltam ${Math.max(0, Math.ceil((x.I.eta - now()) / DAY))} dias)`));
+      act({tipo:"abrir_tela", tela:"acompanhar", rotulo:"Acompanhar destinações"}); return fecha();
     }
     case "atrasos": {
       const P = Object.values(S.plans).filter(isLate).sort((a, b) => daysSince(stageEnteredAt(b)) - daysSince(stageEnteredAt(a)));
@@ -4507,7 +4551,8 @@ async function askAssistant(text, opts = {}) {
 }
 // ---------- interface ----------
 function mdLite(t) {
-  const lines = esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").split("\n");
+  const des = String(t).replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&"); // respostas já vêm escapadas: desfaz antes de escapar uma única vez
+  const lines = esc(des).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").split("\n");
   let html = "", inList = false;
   for (const l of lines) { const m = l.match(/^\s*[-•*]\s+(.*)/); if (m) { if (!inList) { html += "<ul>"; inList = true; } html += `<li>${m[1]}</li>`; } else { if (inList) { html += "</ul>"; inList = false; } html += l.trim() ? `<p>${l}</p>` : ""; } }
   return html + (inList ? "</ul>" : "");
@@ -4580,7 +4625,7 @@ function drawChat() {
       ${AS.msgs.length ? `<button class="btn ghost sm" id="as-clear">Nova conversa</button>` : ""}${VOZ.fala ? `<button class="btn ghost icon-btn ${VOZ.ler ? "on" : ""}" id="as-ler" aria-pressed="${VOZ.ler}" aria-label="${VOZ.ler ? "Parar de ler as respostas em voz alta" : "Ler as respostas em voz alta"}" title="${VOZ.ler ? "Respostas em voz alta: ligado" : "Respostas em voz alta: desligado"}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4z"/>${VOZ.ler ? '<path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/>' : '<path d="M22 9l-6 6M16 9l6 6"/>'}</svg></button>` : ""}${AS.full && !AS.min ? `<button class="btn sm" id="as-completo" title="Ver painéis, menus e todas as telas">Sistema completo</button>` : `<button class="btn ghost icon-btn" id="as-min" aria-label="${AS.min ? "Restaurar o assistente" : "Minimizar o assistente"}" title="${AS.min ? "Restaurar" : "Minimizar"}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">${AS.min ? '<path d="M6 15l6-6 6 6"/>' : '<path d="M5 12h14"/>'}</svg></button>`}${AS.full ? "" : `<button class="btn ghost icon-btn" id="as-x" aria-label="Fechar">${ic("x")}</button>`}</div>
     <div class="as-body" id="as-body">
       ${AS.msgs.length ? "" : AS.full ? helloFull() : `<div class="as-hello"><p><b>Olá${S.me.name ? ", " + esc(String(S.me.name).replace(/^(Prof\.ª|Prof\.)\s*/, "").split(" ")[0]) : ""}.</b> Pergunte sobre saldos, planos, entregas e prazos, digitando ou pelo microfone. Quando fizer sentido, eu ofereço um botão para você ir direto ao ponto. Respondo com cálculo exato sobre os dados do sistema, e tudo fica registrado no log de auditoria.</p><div class="as-sug">${chatSuggestions().map(s => `<button class="as-chip" data-sug="${esc(s)}">${esc(s)}</button>`).join("")}</div></div>`}
-      ${AS.msgs.map((m, i) => m.role === "user" ? `<div class="as-m u">${esc(m.text)}</div>` : `<div class="as-m a">${m.text ? mdLite(m.text) : ""}${m.pending && !m.text ? `<p class="as-think"><span></span><span></span><span></span> ${esc(AS.status || "Pensando")}…</p>` : ""}${m.pending && m.text && AS.status ? `<p class="as-think">${esc(AS.status)}…</p>` : ""}${m.err ? `<p class="small" style="color:var(--crit-ink)">${esc(m.err)}</p>` : ""}${m.actions.length ? `<div class="as-acts">${m.actions.map((a, k) => `<button class="btn sm ${k === 0 ? "primary" : ""}" data-act-i="${i}_${k}">${esc(a.rotulo)}</button>`).join("")}</div>` : ""}${m.sug && m.sug.length ? `<div class="as-sug" style="margin-top:8px">${m.sug.map(x => `<button class="as-chip" data-sug="${esc(x)}">${esc(x)}</button>`).join("")}</div>` : ""}${!m.pending && m.used.length ? `<div class="as-used">Consultou: ${esc([...new Set(m.used)].join(", ").toLowerCase())}</div>` : ""}</div>`).join("")}
+      ${AS.msgs.map((m, i) => m.role === "user" ? `<div class="as-m u">${esc(m.text)}</div>` : `<div class="as-m a">${m.text ? mdLite(m.text) : ""}${m.pending && !m.text ? `<p class="as-think"><span></span><span></span><span></span> ${esc(AS.status || "Pensando")}…</p>` : ""}${m.pending && m.text && AS.status ? `<p class="as-think">${esc(AS.status)}…</p>` : ""}${m.err ? `<p class="small" style="color:var(--crit-ink)">${esc(m.err)}</p>` : ""}${m.actions.length ? `<div class="as-acts">${m.actions.map((a, k) => `<button class="btn sm ${k === 0 ? "primary" : ""}" data-act-i="${i}_${k}">${esc(a.rotulo)}</button>`).join("")}</div>` : ""}${m.sug && m.sug.length ? `<div class="as-sug" style="margin-top:8px">${m.sug.map(x => `<button class="as-chip" data-sug="${esc(x)}">${esc(x)}</button>`).join("")}</div>` : ""}${!m.pending && m.used.length ? `<div class="as-used">Consultou: ${esc([...new Set(m.used)].join(", ").toLowerCase())}</div>` : ""}${!m.pending && m.text && i > 0 ? `<button class="as-rep" data-rep="${i}" ${m.reportado ? "disabled" : ""}>${m.reportado ? "Obrigado, registrado para correção" : "Resposta errada?"}</button>` : ""}</div>`).join("")}
     </div>
     <form class="as-f" id="as-f"><textarea id="as-in" rows="1" placeholder="${VOZ.on ? "Ouvindo… fale a sua pergunta" : "Pergunte ou toque no microfone…"}" aria-label="Mensagem para o assistente">${esc(keepVal)}</textarea>${VOZ.ok ? `<button type="button" class="btn mic ${VOZ.on ? "rec" : ""}" id="as-mic" aria-pressed="${VOZ.on}" aria-label="${VOZ.on ? "Parar de ouvir" : "Falar a pergunta"}" title="${VOZ.on ? "Parar de ouvir" : "Falar a pergunta"}" ${AS.busy ? "disabled" : ""}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/></svg></button>` : ""}${AS.busy ? `<button type="button" class="btn" id="as-stop">Parar</button>` : `<button class="btn primary" aria-label="Enviar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg></button>`}</form>
     ${VOZ.on ? `<p class="as-voz" role="status">● Ouvindo. Fale a pergunta; eu envio quando você parar.</p>` : ""}
@@ -4599,12 +4644,34 @@ function drawChat() {
   $("#as-in").onkeydown = e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#as-f").requestSubmit(); } };
   $("#as-in").oninput = e => { e.target.style.height = "auto"; e.target.style.height = Math.min(120, e.target.scrollHeight) + "px"; };
   p.querySelectorAll("[data-sug]").forEach(x => x.onclick = () => askAssistant(x.dataset.sug));
+  p.querySelectorAll("[data-rep]").forEach(x => x.onclick = () => reportarResposta(+x.dataset.rep));
   p.querySelectorAll("[data-act-i]").forEach(x => x.onclick = () => { const [i, k] = x.dataset.actI.split("_").map(Number); runAction(AS.msgs[i].actions[k]); });
+}
+// "Resposta errada?": cada reporte vira um caso de teste em tests/chat-casos.json
+function reportarResposta(i) {
+  const m = AS.msgs[i]; const ant = AS.msgs.slice(0, i).reverse().find(x => x.role === "user"); if (!m || !ant) return;
+  const conversa = AS.msgs.slice(0, i + 1).filter(x => x.text).slice(-8).map(x => ({quem:x.role === "user" ? "você" : "chat", texto:String(x.text).slice(0, 600)}));
+  const md = openModal({title:"O que deveria ter acontecido?", sub:"Seu relato vai para a lista de correções do assistente", body:`
+    <div class="field"><label>Você perguntou</label><div class="inp" style="background:var(--panel-2)">${esc(ant.text)}</div></div>
+    <div class="field"><label for="rep-t">Resposta esperada</label><textarea class="inp" id="rep-t" rows="3" placeholder="Ex.: deveria mostrar primeiro quantos projetores há disponíveis"></textarea></div>`,
+    foot:`<button class="btn" data-act="close">Cancelar</button><button class="btn primary" id="rep-go">Enviar</button>`});
+  $("#rep-go", md).onclick = async () => {
+    const t = $("#rep-t", md).value.trim(); if (!t) { toast("Descreva o que você esperava.", true); return; }
+    await logAssist({tipo:"feedback", texto:t, acao:{pergunta:ant.text, resposta:String(m.text).slice(0, 1500), perfil:R(), conversa}});
+    m.reportado = true; closeModal(); drawChat(); toast("Obrigado. O relato entrou na lista de correções.");
+  };
+}
+function casosDosReportes() {
+  const F = allLogs().filter(e => e.tipo === "feedback" && e.acao);
+  const persona = r => (PERSONAS.find(p => p.roles.includes(r)) || {}).id || "u_pat";
+  return {casos:F.map(e => ({nome:"Reporte de " + fmtD(e.at) + ": " + String(e.acao.pergunta).slice(0, 50), persona:persona(e.acao.perfil || e.role), esperado:e.texto,
+    msgs:(e.acao.conversa || [{quem:"você", texto:e.acao.pergunta}]).filter(x => x.quem === "você").map(x => ({q:x.texto})), resposta_errada:e.acao.resposta}))};
 }
 function logsSection() {
   const L = allLogs().slice(0, 60);
-  const lab = {pergunta:"Pergunta", resposta:"Resposta", acao_oferecida:"Ação sugerida", clique:"Ação executada"};
-  return `<section class="card c-12"><div class="card-h"><h3>Registro do assistente</h3><span class="sub">perguntas, sugestões e cliques (últimos 60)</span></div><div class="card-b tbl-wrap">${L.length ? `<table class="tbl"><thead><tr><th>Quando</th><th>Quem</th><th>Evento</th><th>Conteúdo</th></tr></thead><tbody>${L.map(e => `<tr><td class="num" style="white-space:nowrap">${fmtDT(e.at)}</td><td>${esc(nameOf(e.by))}<div class="small muted">${esc(ROLES[e.role] ? ROLES[e.role].label : "")}</div></td><td><span class="pill" style="${e.tipo === "clique" ? "color:var(--accent);background:var(--accent-soft)" : e.tipo === "acao_oferecida" ? "color:var(--brand-2);background:var(--brand-soft)" : ""}">${lab[e.tipo] || esc(e.tipo)}</span>${e.acao && e.acao.canal === "voz" ? ' <span class="small muted">por voz</span>' : ""}</td><td class="small">${esc(e.texto || "")}${e.acao && (e.acao.plano || e.acao.material) ? `<div class="muted">${esc([e.acao.plano, e.acao.material].filter(Boolean).join(" · "))}</div>` : ""}</td></tr>`).join("")}</tbody></table>` : '<div class="empty"><b>Nenhum registro ainda</b>As conversas com o assistente aparecem aqui.</div>'}</div></section>`;
+  const lab = {pergunta:"Pergunta", resposta:"Resposta", acao_oferecida:"Ação sugerida", clique:"Ação executada", feedback:"Resposta errada (reporte)"};
+  const nF = allLogs().filter(e => e.tipo === "feedback").length;
+  return `<section class="card c-12"><div class="card-h"><h3>Registro do assistente</h3><span class="sub">perguntas, sugestões e cliques (últimos 60)</span><span class="sp"></span>${nF ? `<button class="btn sm" data-act="baixar-reportes">${ic("down")}Baixar ${plural(nF, "reporte", "reportes")} como casos de teste</button>` : ""}</div><div class="card-b tbl-wrap">${L.length ? `<table class="tbl"><thead><tr><th>Quando</th><th>Quem</th><th>Evento</th><th>Conteúdo</th></tr></thead><tbody>${L.map(e => `<tr><td class="num" style="white-space:nowrap">${fmtDT(e.at)}</td><td>${esc(nameOf(e.by))}<div class="small muted">${esc(ROLES[e.role] ? ROLES[e.role].label : "")}</div></td><td><span class="pill" style="${e.tipo === "clique" ? "color:var(--accent);background:var(--accent-soft)" : e.tipo === "acao_oferecida" ? "color:var(--brand-2);background:var(--brand-soft)" : ""}">${lab[e.tipo] || esc(e.tipo)}</span>${e.acao && e.acao.canal === "voz" ? ' <span class="small muted">por voz</span>' : ""}</td><td class="small">${esc(e.texto || "")}${e.acao && (e.acao.plano || e.acao.material) ? `<div class="muted">${esc([e.acao.plano, e.acao.material].filter(Boolean).join(" · "))}</div>` : ""}</td></tr>`).join("")}</tbody></table>` : '<div class="empty"><b>Nenhum registro ainda</b>As conversas com o assistente aparecem aqui.</div>'}</div></section>`;
 }
 
 // ---------- eventos globais ----------
@@ -4615,6 +4682,7 @@ document.addEventListener("click", async e => {
   if (el.tagName === "A" && (a === "item" || a === "more" || a === "emp-abrir")) e.preventDefault();
   switch (a) {
     case "close": closeModal(); break;
+    case "baixar-reportes": { const b = new Blob([JSON.stringify(casosDosReportes(), null, 1)], {type:"application/json"}); const u = URL.createObjectURL(b); const l = document.createElement("a"); l.href = u; l.download = "reportes-chat-" + new Date().toISOString().slice(0, 10) + ".json"; l.click(); setTimeout(() => URL.revokeObjectURL(u), 2000); break; }
     case "login-tab": S.loginTab = el.dataset.k; render(); break;
     case "logout": closeModal(); clearInterval(SBTIMER); await SB.signOut(); S.loginTab = "entrar"; enterOfficial(); break;
     case "claim-admin": try { await SB.rpc("reivindicar_admin"); await sbCarregarMe(); await sbLoad(true); applyMyRoles(); S.role = "ADMIN"; renderShell(); go("configuracoes"); toast("Você é o administrador. Configure a instituição e aprove os usuários."); } catch (x) { toast(x.message, true); } break;
