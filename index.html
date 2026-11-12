@@ -2136,6 +2136,7 @@ function act_formalize(id) {
     <div class="form-grid">
       <div class="field"><label>Número do processo no SIPAC</label><input class="inp" id="proc" value="${esc(p0.processo || "")}" placeholder="23074.000000/2026-00" required></div>
       <div class="field"><label>Alçada calculada</label><input class="inp" disabled value="${esc(req.map(r => S.cfg.signatarios[r].cargo).join(" + "))} · ${BRL.format(tot)}"></div>
+      ${(() => { const d = detList().find(x => x.planoId === id && x.assinatura && ["PRA","REITORIA"].includes(x.papel)); return d ? `<div class="field full"><div class="alert good"><div class="ic">${ic("check")}</div><div><b>Decisão assinada por ${esc(d.assinatura.cargo || d.papel)} (${esc(d.numero)})</b><p>Ela já vale como autorização: ao concluir, o plano segue direto para a separação${d.papel === "PRA" && req.includes("REITORIA") ? ", depois da assinatura do autorizador de nível 2, porque o valor passa do limite de alçada" : ""}. Se você mudar os bens ou as quantidades decididos, o termo volta para assinatura.</p></div></div></div>` : ""; })()}
       <div class="field full"><label>Fundamentação</label><textarea class="inp" id="fund">${esc(p0.fundamentacao || S.cfg.fundamentacao)}</textarea></div>
       <div class="field full"><label>Despacho de encaminhamento</label><textarea class="inp" id="desp">${esc(p0.despacho || `Encaminho à autoridade competente para autorização da destinação de ${plural(planQtd(p0), "bem", "bens")} da reserva técnica à unidade ${p0.unidade}, no valor total de ${BRL.format(tot)}, conforme justificativa apresentada.`)}</textarea></div>
     </div>`, foot:`<button class="btn" data-act="close">Cancelar</button><button class="btn primary" id="go">Submeter à autorização</button>`});
@@ -2143,9 +2144,22 @@ function act_formalize(id) {
     const proc = $("#proc").value.trim(); if (!proc) { toast("Informe o número do processo.", true); return; }
     if (S.mode === "oficial") { if (await sbDo("formalizar_plano", {p_papel:R(), p_id:id, p_processo:proc, p_fundamentacao:$("#fund").value.trim(), p_despacho:$("#desp").value.trim()}, p0.numero + " submetido à autorização.")) closeModal(); return; }
     const p = clone(p0); p.processo = proc; p.fundamentacao = $("#fund").value.trim(); p.despacho = $("#desp").value.trim();
-    p.assinaturasExigidas = req; p.assinaturas = {}; p.docHash = await sha256(docPayload(p));
-    setStatus(p, "AUTORIZACAO"); await addEvent(p, "formalizacao", "Instrução concluída e submetida à autorização · Processo " + proc);
-    if (await persist("planos", id, p)) { closeModal(); toast(p.numero + " submetido a " + req.map(r => S.cfg.signatarios[r].cargo).join(" e ") + "."); renderShell(); render(); }
+    // a decisão assinada do autorizador vale como autorização (se os bens não mudaram)
+    const d = detList().find(x => x.planoId === id && x.situacao === "ATENDIDA" && x.assinatura && ["PRA","REITORIA"].includes(x.papel));
+    const igual = d && (() => { const a = {}, b = {}; p.itens.forEach(li => a[li.itemId] = (a[li.itemId] || 0) + li.qtd); d.itens.forEach(i => b[i.material_id] = (b[i.material_id] || 0) + i.quantidade); return Object.keys({...a, ...b}).every(k => a[k] === b[k]); })();
+    const exig = igual && d.papel === "REITORIA" ? ["REITORIA"] : req;
+    p.assinaturasExigidas = exig; p.assinaturas = {}; p.docHash = await sha256(docPayload(p));
+    setStatus(p, "AUTORIZACAO"); await addEvent(p, "formalizacao", "Instrução concluída · Processo " + proc);
+    let msgFim = p.numero + " submetido a " + exig.map(r => S.cfg.signatarios[r].cargo).join(" e ") + ".";
+    if (igual && exig.includes(d.papel)) {
+      const t = d.assinatura.assinadoEm || d.criadoEm; const sig = await sha256(p.docHash + "|" + d.autor + "|" + d.papel + "|" + t + "|decisao");
+      const rec = {planId:p.id, numero:p.numero, role:d.papel, by:d.autor, at:t, docHash:p.docHash, sig, cargo:d.assinatura.cargo || S.cfg.signatarios[d.papel].cargo, nome:d.assinatura.nome || S.cfg.signatarios[d.papel].nome, origem:"decisao_assinada", determinacao:d.numero};
+      if (await persistSig(rec)) { p.assinaturas[d.papel] = rec; await addEvent(p, "assinatura", `Autorização dada pela decisão assinada de ${rec.cargo} (${d.numero}) · código ${vcode(sig)}`, {by:d.autor, role:d.papel}); }
+      const pend = exig.filter(r => !p.assinaturas[r]);
+      if (!pend.length) { setStatus(p, "AUTORIZADO"); await addEvent(p, "autorizado", "Destinação autorizada · bens reservados para a unidade", {by:d.autor, role:d.papel}); msgFim = `${p.numero} formalizado. A decisão assinada já vale como autorização: segue para a separação.`; }
+      else msgFim = `${p.numero} formalizado. Valor acima do limite de alçada: falta a assinatura de ${S.cfg.signatarios[pend[0]].cargo}.`;
+    } else if (d) await addEvent(p, "formalizacao", `Os bens mudaram em relação à decisão ${d.numero}: o termo segue para assinatura`);
+    if (await persist("planos", id, p)) { closeModal(); toast(msgFim); renderShell(); render(); }
   };
 }
 async function act_sign(id) {
@@ -2778,7 +2792,7 @@ function assinarDecisao(dados, opts = {}) {
   return new Promise(resolve => {
     const sg = S.cfg.signatarios[R()] || {}; const st = computeStock();
     const itens = (dados.itens || []).map(i => ({...i, it:S.items[i.material_id]}));
-    const m = openModal({title:opts.titulo || "Assinar a decisão de destinação", sub:"A decisão assinada inicia o plano e avisa a Formalização", body:`
+    const m = openModal({title:opts.titulo || "Assinar a decisão de destinação", sub:"A decisão assinada inicia o plano e já vale como autorização", body:`
       <div class="alert good" style="margin-bottom:12px"><div class="ic">${ic("check")}</div><div><b>Disponibilidade conferida</b><p>${itens.map(i => `${fmtN(i.quantidade)} × ${esc(i.it ? i.it.descricao : i.descricao || "")} · ${fmtN(i.it && st[i.it.id] ? Math.max(0, st[i.it.id].disp) : 0)} disponíveis hoje`).join("<br>")}</p></div></div>
       <table class="tbl"><tbody><tr><td class="muted">Destino</td><td><b>${esc(dados.unidade)}</b></td></tr>${opts.proposta ? `<tr><td class="muted">Proposta</td><td>${esc(opts.proposta.numero)} · ${esc(nameOf(opts.proposta.propostoPor))} (${esc((ROLES[opts.proposta.propostoPapel] || {}).label || opts.proposta.propostoPapel || "")}), ${fmtD(opts.proposta.propostoEm || opts.proposta.criadoEm)}</td></tr>` : ""}${dados.observacao ? `<tr><td class="muted">Observação</td><td>${esc(dados.observacao)}</td></tr>` : ""}</tbody></table>
       <hr><label class="check"><input type="checkbox" id="ad-dec"> <span>Eu, <b>${esc(S.me.name)}</b>${S.me.teste ? " (conta de teste)" : ""}, na qualidade de <b>${esc(sg.cargo || R())}</b>, decido pela destinação acima e autorizo o início do plano.</span></label>`,
@@ -2949,7 +2963,7 @@ function chatDeterminarMontar(s, msg) {
   if (canDeterminar()) {
     act({tipo:"determinar", rotulo:"Assinar e iniciar o plano", det:dados});
     act({tipo:"determinar_ajustar", rotulo:"Ajustar antes", det:dados});
-    return `${disp1}\n${resumo}\nA decisão é registrada com a sua **assinatura eletrônica**. Só depois dela o plano é iniciado e a Formalização é avisada.`;
+    return `${disp1}\n${resumo}\nA decisão é registrada com a sua **assinatura eletrônica** e já vale como autorização: o plano é iniciado, a Formalização é avisada e, depois de formalizado, segue direto para a separação${canDeterminar() && R() === "PRA" && dados.itens.reduce((a, i) => a + i.quantidade * ((S.items[i.material_id] || {}).valorUnitario || 0), 0) > (S.cfg.limiteAlcada || 50000) ? " (como o valor passa do limite de alçada, o autorizador de nível 2 também assina)" : ""}.`;
   }
   if (canPropor()) {
     act({tipo:"propor", rotulo:"Enviar para o autorizador", det:dados});
