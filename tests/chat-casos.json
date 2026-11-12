@@ -1,5 +1,5 @@
 {
- "_como_usar": "Cada caso é uma conversa: persona + mensagens em sequência. Em cada mensagem, 'tem' (texto que deve aparecer), 'nao' (texto que não pode aparecer), 'botao' (rótulo de botão esperado), 'sem_botao' (rótulo que não pode aparecer), 'comeca' (início da resposta). Para registrar um bug novo, copie um caso, cole a conversa que deu errado e diga o que deveria acontecer.",
+ "_como_usar": "Cada caso é uma conversa: persona + mensagens em sequência. Em cada mensagem, 'tem' (texto que deve aparecer), 'nao' (texto que não pode aparecer), 'botao' (rótulo de botão esperado), 'sem_botao' (rótulo que não pode aparecer), 'comeca' (início da resposta). Para registrar um bug novo, copie um caso, cole a conversa que deu errado e diga o que deveria acontecer. 'remover' (opcional) apaga do cenário os materiais cuja descrição casa com a expressão, para simular uma reserva sem aquele item.",
  "casos": [
   {
    "nome": "Cumprimento não lista pendências",
@@ -581,6 +581,95 @@
      "q": "oi, gargalos??",
      "tem": [
       "prazo"
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Reporte 12/11: 'e cpu?' e 'e monitor?' depois de perguntar saldo (reserva sem esses itens)",
+   "persona": "u_adm",
+   "remover": "computador|monitor",
+   "msgs": [
+    {
+     "q": "quantos computadores temos ?",
+     "tem": [
+      "Não há computador"
+     ],
+     "nao": [
+      "Microscópio"
+     ]
+    },
+    {
+     "q": "e cpu ?",
+     "tem": [
+      "Não há cpu"
+     ],
+     "nao": [
+      "Você quis dizer"
+     ]
+    },
+    {
+     "q": "e monitor ?",
+     "tem": [
+      "Não há monitor"
+     ],
+     "nao": [
+      "Unidades",
+      "MONITORAMENTO"
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "'e X?' continua a pergunta de saldo",
+   "persona": "u_adm",
+   "msgs": [
+    {
+     "q": "quantos computadores temos ?",
+     "tem": [
+      "Microcomputador"
+     ]
+    },
+    {
+     "q": "e cpu ?",
+     "tem": [
+      "Microcomputador"
+     ]
+    },
+    {
+     "q": "e monitor ?",
+     "tem": [
+      "Monitor"
+     ]
+    },
+    {
+     "q": "e drone?",
+     "tem": [
+      "Não há drone"
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Apelido curto não casa por prefixo (micro não é microscópio)",
+   "persona": "u_cons",
+   "msgs": [
+    {
+     "q": "tem micro?",
+     "tem": [
+      "Microcomputador"
+     ]
+    },
+    {
+     "q": "tem pc?",
+     "tem": [
+      "Microcomputador"
+     ]
+    },
+    {
+     "q": "tem microscopio?",
+     "tem": [
+      "Microscópio"
      ]
     }
    ]

@@ -2886,7 +2886,7 @@ function chatDecisao(q, msg) {
     const pal = perguntaSaldo[1].split(" ").filter(w => w.length > 3 && !/^(DISPONIVE|RESERVA|AINDA|AGORA)/.test(w));
     const viz = Object.values(S.items).filter(i => computeStock()[i.id].disp > 0 && pal.some(w => normName(i.descricao).includes(w.slice(0, 5))));
     if (viz.length) msg.sug = viz.slice(0, 3).map(i => `Tem ${i.descricao}?`);
-    return `**Não há ${esc(termo)}** na reserva técnica no momento.${viz.length ? " Itens parecidos com saldo:\n" + viz.slice(0, 3).map(i => `- ${esc(i.descricao)}: ${fmtN(computeStock()[i.id].disp)} disponíveis`).join("\n") : ""}`;
+    return `**Não há ${esc(termo.trim())}** na reserva técnica no momento.${viz.length ? " Itens parecidos com saldo:\n" + viz.slice(0, 3).map(i => `- ${esc(i.descricao)}: ${fmtN(computeStock()[i.id].disp)} disponíveis`).join("\n") : ""}`;
   }
   if (verboDest.test(n)) { // pediu para destinar algo que não está na reserva: a primeira informação é a disponibilidade
     const ws = normName(q).replace(/[?!.,;:]/g, " ").split(/\s+/).filter(Boolean);
@@ -3488,10 +3488,15 @@ const APELIDOS = [
 ].map(g => g.map(normName));
 const APELIDO_RE = APELIDOS.map(g => g.map(t => ({t, re:new RegExp("(^|[^A-Z0-9])" + t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/ /g, "S? ") + "(S|ES)?(?=$|[^A-Z0-9])")})));
 function matchText(desc, q) {
+  const Qc = normName(q).trim();
+  if (Qc.replace(/[^A-Z0-9]/g, "").length <= 5) { const g = APELIDOS.find(g => g.some(x => normName(x) === Qc)); // "micro", "pc", "note": vale o grupo, não o prefixo
+    if (g) { const D = normName(desc); return g.some(x => { const t = normName(x); return t.replace(/[^A-Z0-9]/g, "").length <= 5 ? new RegExp("(^|[^A-Z0-9])" + t.replace(/[^A-Z0-9 ]/g, "") + "([^A-Z0-9]|$)").test(D) : matchText0(desc, t); }); } }
   if (matchText0(desc, q)) return true;
   const Q = normName(q); if (!Q) return true;
   for (const g of APELIDO_RE) for (const x of g) if (x.re.test(Q)) {
-    for (const alt of g) if (alt.t !== x.t) { const Q2 = Q.replace(x.re, "$1" + alt.t); if (Q2 !== Q && matchText0(desc, Q2)) return true; }
+    for (const alt of g) if (alt.t !== x.t) {
+      if (alt.t.replace(/[^A-Z0-9]/g, "").length <= 5) { if (Q === x.t || Q.replace(x.re, "$1").trim() === "") { if (new RegExp("(^|[^A-Z0-9])" + alt.t.replace(/[^A-Z0-9 ]/g, "") + "([^A-Z0-9]|$)").test(normName(desc))) return true; } continue; } // apelido curto ("MICRO", "PC") só casa palavra inteira: "micro" não é "microscópio"
+      const Q2 = Q.replace(x.re, "$1" + alt.t); if (Q2 !== Q && matchText0(desc, Q2)) return true; }
   }
   return false;
 }
@@ -4210,6 +4215,16 @@ function corrigirVerbo(q) { // "libee 5 cadeiras" -> "libere 5 cadeiras"
   return q;
 }
 function localAnswer(q, msg, _tentou) {
+  const nq = normName(limparEnfeites(q)).replace(/[?!.,;:()"“”]/g, " ").replace(/\s+/g, " ").trim();
+  const seg = nq.match(/^E (?:O |A |OS |AS |DE |DO |DA |DOS |DAS |QUANTO A |SOBRE )?(.{2,40})$/);
+  if (seg && AS.ultimo === "saldo" && !AS._fuzzy && !AS.slot && seg[1].split(" ").length <= 4 && !/^(VOCE|AI|ENTAO|AGORA|DEPOIS|HOJE)$/.test(seg[1])) {
+    AS._seg = true; try { return localAnswer0("quantos " + seg[1].toLowerCase() + " temos", msg); } finally { AS._seg = false; }
+  }
+  const r = localAnswer0(q, msg, _tentou);
+  if (!AS._fuzzy && !AS._seg) AS.ultimo = /^(QUANT\w*|TEM|TEMOS|HA|EXISTE\w*|SALDO|ESTOQUE|AINDA TEM|TEM ALGUM\w*)\b/.test(nq) && !/\b(PLANOS?|ENTREGAS?|EMPENHOS?|PENDENCIAS?|UNIDADES?|USUARIOS?|DIAS)\b/.test(nq) ? "saldo" : (seg ? AS.ultimo : null);
+  return r;
+}
+function localAnswer0(q, msg, _tentou) {
   q = corrigirVerbo(limparEnfeites(q));
   const n0 = normName(q).replace(/[?!.,;:()"“”]/g, " ").replace(/\s+/g, " ").trim();
   if (AS.slot && /^(SIM|PODE|PODE SER|OK|CERTO|QUERO|CONFIRMO|ISSO|CLARO|VAMOS)\b/.test(n0) && AS.slot.sugQtd) { const s = AS.slot; s.qtd = s.sugQtd; delete s.sugQtd; return chatDeterminarMontar(s, msg); }
@@ -4497,6 +4512,12 @@ function localAnswerRegras(q, msg) {
       const best = (arr, f) => { const sc = arr.map(x => [score(f(x)), x]).filter(x => x[0] > 0); const mx = Math.max(0, ...sc.map(x => x[0])); return sc.filter(x => x[0] === mx).map(x => x[1]); };
       const mats = best(Object.values(S.items), it => [it.descricao, it.especificacao, it.categoria, it.marca, it.modelo, it.fornecedor, it.localizacao, it.codigo, it.obs].join(" "));
       const pls = best(Object.values(S.plans), p => [p.numero, p.unidade, planUnitText(p), p.finalidade, p.justificativa, p.processo, ST[p.status].l, ...(p.itens || []).map(i => i.descricao), p.entrega ? p.entrega.recebedor + " " + (p.entrega.local || "") : ""].join(" "));
+      if (!mats.length) {
+        const VW = new Set(); vocMateriais().frases.forEach(f => f.split(" ").forEach(w => { if (w.length >= 3 && !STOP.has(w)) VW.add(w); }));
+        const sing = t => t.replace(/(ES|S)$/, "");
+        const ehMat = toks.filter(t => VW.has(t) || VW.has(sing(t)) || [...VW].some(w => sing(w) === sing(t) && t.length >= 4));
+        if (ehMat.length) return `**Não há ${esc(ehMat.join(" ").toLowerCase())}** na reserva técnica no momento.`;
+      }
       const uns = searchUnits(toks.join(" "), 3);
       const parts = [];
       if (mats.length) {

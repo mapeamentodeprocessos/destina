@@ -16,7 +16,8 @@ JS = """async (caso) => {
   localStorage.removeItem(DEMO_KEY);
   await seedDemo();
   await enterDemoPersona(caso.persona, true);
-  AS.slot = null; AS.ctx = null; AS.msgs = [];
+  if (caso.remover) { const re = new RegExp(caso.remover, "i"); for (const id of Object.keys(S.items)) if (re.test(S.items[id].descricao)) delete S.items[id]; VOC_MAT = null; }
+  AS.slot = null; AS.ctx = null; AS.msgs = []; AS.ultimo = null;
   const out = [];
   for (const m of caso.msgs) {
     const msg = {actions: [], sug: null}; let r;
