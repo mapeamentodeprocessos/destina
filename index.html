@@ -91,6 +91,17 @@ kbd{font-family:inherit;font-size:11px;border:1px solid var(--line);border-botto
 .av-pop .f{padding:10px 16px 14px;border-top:1px solid var(--line-2);font-size:12.5px;color:var(--muted)}
 .av-novo{position:fixed;right:22px;bottom:86px;z-index:310;width:340px;max-width:calc(100vw - 24px);background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--brand);border-radius:12px;box-shadow:0 16px 40px rgba(0,0,0,.22);padding:12px 14px;animation:pop .16s}
 .av-novo b{display:block;font-size:14px}
+.cat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}
+.cat-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;cursor:pointer;transition:border-color .12s}
+.cat-card:hover,.cat-card:focus-visible{border-color:var(--brand)}
+.cat-card .ph{aspect-ratio:1/1;background:#fff;display:grid;place-items:center;border-bottom:1px solid var(--line-2);position:relative}
+.cat-card .ph img{width:100%;height:100%;object-fit:contain;padding:8px}
+.cat-card .ph svg{width:100%;height:100%}
+.cat-card .ph .tag{position:absolute;left:8px;bottom:8px;font-size:11px;background:rgba(34,50,75,.82);color:#fff;padding:2px 7px;border-radius:99px}
+.cat-card .bd{padding:10px 12px 12px;display:flex;flex-direction:column;gap:4px;flex:1}
+.cat-card .bd b{font-size:13.5px;line-height:1.3}
+.cat-card .bd .q{margin-top:auto;display:flex;align-items:baseline;gap:6px;padding-top:6px}
+.cat-card .bd .q .v{font-size:20px;font-weight:800}
 .av-novo small{display:block;color:var(--muted);margin:2px 0 8px}
 .mode-chip{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;padding:5px 10px;border-radius:99px;border:1px solid var(--line);background:var(--panel);cursor:pointer}
 .mode-chip i{width:8px;height:8px;border-radius:50%;background:var(--warn)}
@@ -629,6 +640,7 @@ const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } ca
 // ---------- ícones ----------
 const IC = {
   painel:'<path d="M3 13h8V3H3zM13 21h8V11h-8zM3 21h8v-6H3zM13 3v6h8V3z"/>',
+  catalogo:'<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><circle cx="17.5" cy="17.5" r="3.5"/>',
   reserva:'<path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3.3 7.6L12 12.5l8.7-4.9M12 22V12.5"/>',
   empenhos:'<path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
   planos:'<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/>',
@@ -1284,6 +1296,7 @@ function scheduleRender() { if (rq) return; rq = requestAnimationFrame(() => { r
 const NAV = [
   {k:"painel", l:"Painel", roles:null},
   {k:"reserva", l:"Reserva técnica", roles:null},
+  {k:"catalogo", l:"Catálogo de fotos", roles:null},
   {k:"empenhos", l:"Empenhos e tombamento", roles:null},
   {k:"planos", l:"Planos de destinação", roles:null},
   {k:"acompanhar", l:"Acompanhar destinações", roles:null},
@@ -1357,7 +1370,7 @@ function render() {
   if (S.mode === "oficial" && !S.role) { v.innerHTML = vSemPerfil(); return; }
   const nav = NAV.find(n => n.k === S.route);
   if (nav && nav.roles && !nav.roles.includes(R())) { S.route = "painel"; }
-  const views = {painel:vPainel, reserva:vReserva, empenhos:vEmpenhos, planos:vPlanos, acompanhar:vAcompanhar, plano:vPlano, autorizacoes:vAutorizacoes, entregas:vEntregas, monitoramento:vMonitoramento, documentos:vDocumentos, configuracoes:vConfig};
+  const views = {painel:vPainel, reserva:vReserva, catalogo:vCatalogo, empenhos:vEmpenhos, planos:vPlanos, acompanhar:vAcompanhar, plano:vPlano, autorizacoes:vAutorizacoes, entregas:vEntregas, monitoramento:vMonitoramento, documentos:vDocumentos, configuracoes:vConfig};
   v.innerHTML = (views[S.route] || vPainel)();
   if (S.route === "empenhos") montarEmpenhos();
   if (S.route === "configuracoes") { mountOrgBrowser(); if (S.mode === "oficial") sbCarregarExternos(); }
@@ -3289,6 +3302,49 @@ async function openDoc(id, kind) {
   };
 }
 
+// ---------- CATÁLOGO DE FOTOS ----------
+function catItens() {
+  const u = S.ui; const st = computeStock(); const q = normName((u.catQ || "").trim());
+  let L = Object.values(S.items);
+  if (u.catCat) L = L.filter(i => i.categoria === u.catCat);
+  if (u.catSaldo !== false) L = L.filter(i => st[i.id].disp > 0);
+  if (q) L = L.filter(i => normName([i.descricao, i.especificacao, i.codigo, i.marca, i.categoria].join(" ")).includes(q));
+  return L.sort((a, b) => a.categoria.localeCompare(b.categoria, "pt-BR") || a.descricao.localeCompare(b.descricao, "pt-BR")).map(i => ({it:i, disp:Math.max(0, st[i.id].disp)}));
+}
+function catFoto(it, px) { return it.foto ? `<img src="${esc(it.foto)}" alt="Foto de ${esc(it.descricao)}" loading="lazy">` : `${ilustracaoSvg(it, {px})}<span class="tag">Representação</span>`; }
+function vCatalogo() {
+  const u = S.ui; if (u.catSaldo === undefined) u.catSaldo = true;
+  const L = catItens(); const todos = Object.values(S.items); const comFoto = todos.filter(i => i.foto).length;
+  const cats = CATS.filter(c => todos.some(i => i.categoria === c));
+  const pode = canDeterminar() || canPropor() || can.createPlan();
+  return `<div class="page-h"><div><h1>Catálogo de fotos</h1><p>Os bens da reserva técnica com foto e saldo disponível, para escolher o que destinar. ${comFoto} de ${plural(todos.length, "material tem", "materiais têm")} foto; os demais aparecem com uma representação ilustrativa.</p></div>
+    <div class="r"><button class="btn" data-act="cat-imprimir">${ic("documentos")}Imprimir ou salvar em PDF</button></div></div>
+  <div class="toolbar"><input class="inp q" type="search" placeholder="Buscar no catálogo…" value="${esc(u.catQ || "")}" data-ui="catQ" aria-label="Buscar no catálogo">
+    <select class="inp" data-ui="catCat" aria-label="Categoria" style="max-width:220px"><option value="">Todas as categorias</option>${cats.map(c => `<option ${u.catCat === c ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>
+    <div class="seg" role="group" aria-label="Saldo"><button aria-pressed="${u.catSaldo !== false}" data-act="cat-saldo" data-k="1">Com saldo</button><button aria-pressed="${u.catSaldo === false}" data-act="cat-saldo" data-k="0">Todos</button></div></div>
+  <p class="small muted" style="margin:-4px 0 12px">${plural(L.length, "material", "materiais")} · ${fmtN(L.reduce((a, x) => a + x.disp, 0))} bens disponíveis</p>
+  ${L.length ? `<div class="cat-grid">${L.map(({it, disp}) => `<article class="cat-card" data-act="item" data-id="${it.id}" tabindex="0" role="button" aria-label="${esc(it.descricao)}">
+    <div class="ph">${catFoto(it, 220)}</div>
+    <div class="bd"><b>${esc(it.descricao)}</b><span class="small muted">${esc(it.categoria)}${it.especificacao ? " · " + esc(it.especificacao) : ""}</span>
+      <div class="q"><span class="v num">${fmtN(disp)}</span><span class="small muted">disponíve${disp === 1 ? "l" : "is"}</span></div>
+      ${pode && disp > 0 ? `<button class="btn sm" data-act="new-plan" data-item="${it.id}" style="margin-top:6px">${canDeterminar() ? "Destinar" : "Propor destinação"}</button>` : ""}</div></article>`).join("")}</div>`
+    : `<div class="empty card"><b>Nenhum material aqui</b>${u.catSaldo !== false ? "Nenhum material com saldo neste filtro." : "Nenhum material neste filtro."}</div>`}`;
+}
+function catImprimir() {
+  const L = catItens(); const data = new Date().toLocaleDateString("pt-BR");
+  const cards = L.map(({it, disp}) => `<div class="c"><div class="f">${it.foto ? `<img src="${esc(it.foto)}" alt="">` : ilustracaoSvg(it, {px:150, rotulo:true})}</div><b>${esc(it.descricao)}</b><small>${esc(it.codigo || "")} · ${esc(it.categoria)}</small><span>${fmtN(disp)} disponíve${disp === 1 ? "l" : "is"}</span></div>`).join("");
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Catálogo da reserva técnica · ${esc(S.cfg.sigla)} · ${data}</title><style>
+    body{font-family:system-ui,Arial,sans-serif;margin:24px;color:#1b2536}h1{font-size:20px;margin:0}p{margin:4px 0 16px;color:#5b6578;font-size:12px}
+    .g{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.c{border:1px solid #d6dce6;border-radius:8px;padding:8px;break-inside:avoid;display:flex;flex-direction:column;gap:3px;font-size:11px}
+    .f{aspect-ratio:1/1;display:grid;place-items:center;background:#fff}.f img{max-width:100%;max-height:100%;object-fit:contain}.f svg{width:100%;height:100%}
+    b{font-size:11.5px;line-height:1.25}small{color:#5b6578}span{font-weight:700}@page{margin:12mm}@media print{body{margin:0}}</style></head>
+    <body><h1>Catálogo da reserva técnica · ${esc(S.cfg.instituicao || S.cfg.sigla)}</h1><p>${plural(L.length, "material", "materiais")} · saldo de ${data}. Itens sem foto aparecem com representação ilustrativa.</p><div class="g">${cards}</div>
+    <script>window.onload=function(){setTimeout(function(){window.print()},300)}<\/script></body></html>`;
+  const w = window.open("", "_blank");
+  if (w) { w.document.open(); w.document.write(html); w.document.close(); }
+  else saveFile("catalogo-reserva-tecnica.html", html);
+}
+
 // ---------- CONFIGURAÇÕES ----------
 function vConfig() {
   const c = S.cfg;
@@ -3716,7 +3772,7 @@ async function persistOrg(rows, meta) {
 // ASSISTENTE DESTINA — perguntas em linguagem natural, ações por clique, log
 // =====================================================================
 const AS = {open:false, turns:[], msgs:[], busy:false, ctl:null, status:"", sample:null, tools:false, myLog:null};
-const TELAS = {painel:"Painel", reserva:"Reserva técnica", empenhos:"Empenhos e tombamento", planos:"Planos de destinação", acompanhar:"Acompanhar destinações", autorizacoes:"Autorizações", entregas:"Separação e entrega", monitoramento:"Monitoramento", documentos:"Documentos e autenticidade", configuracoes:"Configurações"};
+const TELAS = {painel:"Painel", reserva:"Reserva técnica", catalogo:"Catálogo de fotos", empenhos:"Empenhos e tombamento", planos:"Planos de destinação", acompanhar:"Acompanhar destinações", autorizacoes:"Autorizações", entregas:"Separação e entrega", monitoramento:"Monitoramento", documentos:"Documentos e autenticidade", configuracoes:"Configurações"};
 const SYN = {GELADEIRA:"REFRIGERADOR", GELADEIRAS:"REFRIGERADOR", "MICRO-ONDAS":"MICROONDAS", SPLIT:"HI-WALL", BEBEDOUROS:"BEBEDOURO", PC:"COMPUTADOR", PCS:"COMPUTADOR", CPU:"COMPUTADOR", CPUS:"COMPUTADOR", DESKTOP:"COMPUTADOR", DESKTOPS:"COMPUTADOR", NOTE:"NOTEBOOK", NOTES:"NOTEBOOK", LAPTOP:"NOTEBOOK", LAPTOPS:"NOTEBOOK", "AR-CONDICIONADO":"AR CONDICIONADO", ARES:"AR"};
 // nomes populares ↔ nomes do catálogo: cada linha é um grupo de equivalentes (a busca tenta todos)
 const APELIDOS = [
@@ -5232,6 +5288,8 @@ document.addEventListener("click", async e => {
     case "persona": closeModal(); enterDemoPersona(id); break;
     case "role": S.role = el.dataset.r; lsSet("destina_role_" + S.me.id, S.role); closeModal(); renderShell(); render(); toast("Atuando como " + ROLES[S.role].label + "."); break;
     case "avisos": avisosAbrir(); break;
+    case "cat-saldo": S.ui.catSaldo = el.dataset.k === "1"; render(); break;
+    case "cat-imprimir": catImprimir(); break;
     case "av-ir": avisosIr(el.dataset.k); break;
     case "av-nav": avisosNavegador(); break;
     case "theme": applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark"); renderShell(); break;
