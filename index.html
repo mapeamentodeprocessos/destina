@@ -1212,10 +1212,10 @@ async function sbCarregarExternos() {
 }
 async function sbBackup() {
   toast("Preparando a cópia de segurança…");
-  const T = ["config","perfis","unidades","estrutura_meta","materiais","lotes","contadores","planos","plano_itens","plano_etapas","eventos","assinaturas","entregas","tombamentos","log_assistente"];
+  const T = ["config","perfis","unidades","estrutura_meta","materiais","lotes","contadores","planos","plano_itens","plano_etapas","eventos","assinaturas","entregas","tombamentos","log_assistente","determinacoes","empenhos","empenho_itens","bens","assinatura_codigos"];
   try {
     const out = {sistema:"Destina", gerado_em:new Date().toISOString(), gerado_por:S.me.email || S.me.name, tabelas:{}};
-    for (const t of T) out.tabelas[t] = await SB.all(t, "select=*");
+    const falhas = []; for (const t of T) { try { out.tabelas[t] = await SB.all(t, "select=*"); } catch (x) { falhas.push(t); } } if (falhas.length) out.nao_copiadas = falhas;
     const n = Object.values(out.tabelas).reduce((a, x) => a + x.length, 0);
     await saveFile("destina-backup-" + new Date().toISOString().slice(0, 10) + ".json", JSON.stringify(out, null, 1));
     toast("Cópia de segurança gerada com " + fmtN(n) + " registros.");
