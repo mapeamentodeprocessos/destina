@@ -806,6 +806,52 @@
      ]
     }
    ]
+  },
+  {
+   "nome": "Código da unidade com ou sem pontos",
+   "persona": "u_pat",
+   "msgs": [
+    {
+     "q": "destinar 2 cadeiras para 110041",
+     "tem": [
+      "2 × ",
+      "11.00.41",
+      "CCEN"
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Código sem pontos como resposta da unidade",
+   "persona": "u_pat",
+   "msgs": [
+    {
+     "q": "quero mandar 2 cadeiras",
+     "tem": [
+      "código organizacional"
+     ]
+    },
+    {
+     "q": "110047",
+     "tem": [
+      "2 × ",
+      "11.00.47"
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Código com espaços",
+   "persona": "u_pat",
+   "msgs": [
+    {
+     "q": "quero mandar 2 cadeiras para 11 00 47",
+     "tem": [
+      "2 × ",
+      "11.00.47"
+     ]
+    }
+   ]
   }
  ]
 }

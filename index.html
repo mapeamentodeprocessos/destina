@@ -2875,8 +2875,8 @@ function chatDecisao(q, msg) {
   const n = nl.n || "", E = nl.ents, act = a => { if (actionAllowed(a)) msg.actions.push(a); };
   const NUMW = {UM:1, UMA:1, DOIS:2, DUAS:2, TRES:3, QUATRO:4, CINCO:5, SEIS:6, SETE:7, OITO:8, NOVE:9, DEZ:10, ONZE:11, DOZE:12, QUINZE:15, VINTE:20, TRINTA:30, QUARENTA:40, CINQUENTA:50, CEM:100};
   const cru = normName(q).split(" ");
-  const codOrg = (q.match(/\b\d{2}(?:\.\d{2}){1,6}\b/) || [])[0];
-  if (AS.slot && codOrg) { const u = ORG.by.get(codOrg); const s0 = AS.slot; if (u) E.uni = u; else if (s0.uni && !s0.uni.code) E.uni = {...s0.uni, code:codOrg}; else E.uni = {code:codOrg, name:"Unidade " + codOrg}; delete E.qtd; }
+  const uCod = unidadePorCodigo(q); const codOrg = uCod ? uCod.code : (q.match(/\b\d{2}(?:\.\d{2}){1,6}\b/) || [])[0];
+  if (AS.slot && codOrg) { const u = uCod || ORG.by.get(codOrg); const s0 = AS.slot; if (u) E.uni = u; else if (s0.uni && !s0.uni.code) E.uni = {...s0.uni, code:codOrg}; else E.uni = {code:codOrg, name:"Unidade " + codOrg}; delete E.qtd; }
   // continuação de uma determinação incompleta ("para o CCS", "30", "cinco", "Biblioteca Central")
   if (AS.slot && n.split(" ").length <= 12 && !E.uni && !E.qtd && !E.mat) {
     if (!AS.slot.qtd && cru.length <= 3) { const w = cru.find(x => NUMW[x]); if (w) E.qtd = NUMW[w]; }
@@ -3309,7 +3309,8 @@ function loadOrg(rows, meta = {}) {
   ORG.list.forEach(u => sz(u.code));
   ORG.containers = new Set(ORG.list.filter(u => size.get(u.code) > ORG.list.length * 0.5).map(u => u.code));
   ORG.start = [...ORG.containers].map(c => ORG.by.get(c)).sort((a, b) => b.path.length - a.path.length)[0]?.code || ORG.root;
-  ORG.list.forEach(u => { const chain = [...u.path, u.code].filter(c => !ORG.containers.has(c)); u.orgao = chain[0] || u.code; u.key = normName(u.name + " " + u.code); });
+  ORG.list.forEach(u => { const chain = [...u.path, u.code].filter(c => !ORG.containers.has(c)); u.orgao = chain[0] || u.code; u.key = normName(u.name + " " + u.code + " " + u.code.replace(/\D/g, "")); u.dig = u.code.replace(/\D/g, ""); });
+  ORG.byDig = new Map(ORG.list.map(u => [u.dig, u]));
   ORG.fonte = meta.fonte || "Hierarquia SIPAC/UFPB"; ORG.atualizadoEm = meta.atualizadoEm || null;
 }
 function loadOrgDefault() { try { const d = JSON.parse($("#sipacData").textContent); loadOrg(d.u, {fonte:d.fonte, atualizadoEm:d.data}); } catch (e) { loadOrg([]); } }
@@ -3318,8 +3319,18 @@ const uShort = u => { if (!u) return ""; const s = uSigla(u); return s && u.name
 function uPathText(code) { const u = ORG.by.get(code); if (!u) return ""; return u.path.filter(c => c !== ORG.root && !(ORG.containers && ORG.containers.has(c))).map(c => uShort(ORG.by.get(c))).join(" › "); }
 function orgaoOf(code) { const u = ORG.by.get(code); return u ? ORG.by.get(u.orgao) : null; }
 function subtreeCount(code) { let n = 0; const st = [...(ORG.kids.get(code) || [])]; while (st.length) { const u = st.pop(); n++; st.push(...(ORG.kids.get(u.code) || [])); } return n; }
+// código com ou sem pontos ("11.00.41" ou "110041") -> unidade da estrutura
+function unidadePorCodigo(txt) {
+  const t = String(txt || ""); const m = t.match(/\b\d{2}(?:[.\s]?\d{2}){1,6}\b/g) || [];
+  for (const c of m) { const d = c.replace(/\D/g, ""); if (d.length >= 4 && ORG.byDig && ORG.byDig.get(d)) return ORG.byDig.get(d); }
+  return null;
+}
 function searchUnits(q, lim = 40) {
   const Q = normName(q); if (!Q) return [];
+  if (/^[\d.\s-]+$/.test(String(q).trim())) { // busca por código, com ou sem pontos
+    const D = String(q).replace(/\D/g, ""); if (!D) return [];
+    return ORG.list.filter(u => u.code !== ORG.root && u.dig && u.dig.startsWith(D)).sort((a, b) => (a.dig === D ? -1 : 0) - (b.dig === D ? -1 : 0) || a.dig.length - b.dig.length || a.dig.localeCompare(b.dig)).slice(0, lim);
+  }
   const toks = Q.split(/\s+/).filter(Boolean);
   const out = [];
   for (const u of ORG.list) {
@@ -3807,7 +3818,7 @@ function nluPeriodo(n) {
 }
 function nluUnidade(n, qOrig) {
   // 0) código organizacional escrito na pergunta ("para 11.00.47")
-  { const cod = (String(qOrig || "").match(/\b\d{2}(?:\.\d{2}){1,6}\b/) || [])[0]; if (cod && ORG.by.get(cod)) return {u:ORG.by.get(cod), txt:cod}; }
+  { const u = unidadePorCodigo(qOrig); if (u) return {u, txt:u.code}; }
   // 1) sigla (CCS, CCEN, STI…): siglas que também são palavras comuns só valem se escritas em maiúsculas
   const AMB = new Set(["PRA","SE","DA","DE","NA","NO","AO","OU","UM","CE","PE","RE","TI","CI","CA"]);
   const up = new Set((qOrig.match(/\b[A-ZÀ-Ú]{2,8}\b/g) || []).map(normName));
@@ -4393,6 +4404,7 @@ function corrigirChaves(q) {
 }
 function localAnswer(q, msg, _tentou) {
   try { q = corrigirChaves(q); } catch (e) {}
+  try { q = String(q).replace(/\b\d{2}(?:[.\s]?\d{2}){1,6}\b/g, t => { const d = t.replace(/\D/g, ""); const u = d.length >= 4 && ORG.byDig && ORG.byDig.get(d); return u ? u.code : t; }); } catch (e) {} // "110041" -> "11.00.41"
   const nq = normName(limparEnfeites(q)).replace(/[?!.,;:()"“”]/g, " ").replace(/\s+/g, " ").trim();
   const seg = nq.match(/^E (?:O |A |OS |AS |DE |DO |DA |DOS |DAS |QUANTO A |SOBRE )?(.{2,40})$/);
   if (seg && AS.ultimo === "saldo" && !AS._fuzzy && !AS.slot && seg[1].split(" ").length <= 4 && !/^(VOCE|AI|ENTAO|AGORA|DEPOIS|HOJE)$/.test(seg[1])) {
