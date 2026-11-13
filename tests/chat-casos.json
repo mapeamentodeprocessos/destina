@@ -298,17 +298,16 @@
    ]
   },
   {
-   "nome": "Assinar termo de outro nível",
+   "nome": "Autorizadores do mesmo nível: qualquer um assina",
    "persona": "u_reit",
    "msgs": [
     {
      "q": "autorize o PD 0009/2026",
-     "tem": [
-      "não depende da sua assinatura"
-     ],
      "nao": [
+      "não depende da sua assinatura",
       "1 Termo"
-     ]
+     ],
+     "botao": []
     }
    ]
   },
@@ -319,8 +318,9 @@
     {
      "q": "quem autoriza?",
      "tem": [
-      "Autorizador nível 1",
-      "Autorizador nível 2"
+      "Autorizador: George Beltrão",
+      "Autorizador: Terezinha Domiciano",
+      "mesmo nível"
      ]
     }
    ]

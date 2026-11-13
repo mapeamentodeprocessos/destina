@@ -634,8 +634,8 @@ const ic = (n, cls = "") => `<svg class="${cls}" viewBox="0 0 24 24" fill="none"
 // ---------- domínio ----------
 const ROLES = {
   ADMIN:{label:"Gestão do sistema", cor:"#0B3A75"},
-  PRA:{label:"Autorizador · nível 1", cor:"#1F5FAF", signer:true},
-  REITORIA:{label:"Autorizador · nível 2", cor:"#6250d6", signer:true},
+  PRA:{get label() { const c = typeof S !== "undefined" && S.cfg && S.cfg.signatarios && S.cfg.signatarios.PRA; return "Autorizador" + (c && c.cargo ? " · " + c.cargo : ""); }, cor:"#1F5FAF", signer:true},
+  REITORIA:{get label() { const c = typeof S !== "undefined" && S.cfg && S.cfg.signatarios && S.cfg.signatarios.REITORIA; return "Autorizador" + (c && c.cargo ? " · " + c.cargo : ""); }, cor:"#6250d6", signer:true},
   FORMALIZACAO:{label:"Formalização documental", cor:"#0E7C8C"},
   PATRIMONIO:{label:"Divisão de Patrimônio", cor:"#0E8C7E"},
   ALMOXARIFADO:{label:"Almoxarifado Central", cor:"#C46A1A"},
@@ -659,7 +659,7 @@ const UNIDADES_PADRAO = ["Reitoria","Pró-Reitoria de Administração (PRA)","Pr
 const CFG_DEFAULT = () => ({
   instituicao:"Universidade Federal da Paraíba", sigla:"UFPB", orgao:"Pró-Reitoria de Administração — Divisão de Patrimônio",
   signatarios:{PRA:{nome:"George Beltrão", cargo:"Pró-Reitor de Administração"}, REITORIA:{nome:"Terezinha Domiciano", cargo:"Reitora"}},
-  limiteAlcada:50000, exigirAmbos:false, sequencial:true, diasParado:180, diasGarantia:90,
+  limiteAlcada:0, exigirAmbos:false, sequencial:true, diasParado:180, diasGarantia:90,
   sla:{RASCUNHO:5, INSTRUCAO:5, AUTORIZACAO:7, AUTORIZADO:5, SEPARACAO:3, PRONTO:5},
   fundamentacao:"Instrução Normativa SEDAP nº 205/1988, que disciplina a racionalização e a distribuição de material na Administração Pública Federal, e normas internas de gestão patrimonial da UFPB.",
   unidades:UNIDADES_PADRAO.slice()
@@ -768,18 +768,19 @@ function computeStock() {
 }
 const planTotal = p => (p.itens || []).reduce((a, li) => a + li.qtd * li.vu, 0);
 const planQtd = p => (p.itens || []).reduce((a, li) => a + li.qtd, 0);
-function requiredSigners(total) {
-  if (S.cfg.exigirAmbos || total > S.cfg.limiteAlcada) return ["PRA", "REITORIA"];
-  return ["PRA"];
-}
+// os dois autorizadores têm o mesmo nível: qualquer um assina; a configuração pode exigir os dois (sempre ou acima de um valor)
+function requiredSigners() { return ["PRA", "REITORIA"]; }
+function minAssin(total) { return S.cfg.exigirAmbos || (+S.cfg.limiteAlcada > 0 && total > +S.cfg.limiteAlcada) ? 2 : 1; }
+function minOf(p) { return p.assinaturasMinimas || ((p.assinaturasExigidas || []).length === 1 ? 1 : minAssin(planTotal(p))); }
+function pendSign(p) { const req = p.assinaturasExigidas || requiredSigners(); const feitas = req.filter(r => (p.assinaturas || {})[r]).length; return feitas >= minOf(p) ? [] : req.filter(r => !(p.assinaturas || {})[r]); }
+function sigsVisiveis(p) { const req = p.assinaturasExigidas || requiredSigners(); const feitas = req.filter(r => (p.assinaturas || {})[r]); return minOf(p) === 1 && feitas.length ? feitas : req; }
 function stageEnteredAt(p) { const e = (p.etapas || []).slice().reverse().find(x => x.s === p.status); return e ? e.at : p.criadoEm; }
 function isLate(p) { const sla = S.cfg.sla[p.status]; return sla && STAGES.includes(p.status) && p.status !== "ENTREGUE" && daysSince(stageEnteredAt(p)) > sla; }
 function nextSigner(p) {
   if (p.status !== "AUTORIZACAO") return null;
-  const req = p.assinaturasExigidas || ["PRA"];
-  const pend = req.filter(r => !(p.assinaturas || {})[r]);
+  const pend = pendSign(p);
   if (!pend.length) return null;
-  return S.cfg.sequencial ? [pend[0]] : pend;
+  return S.cfg.sequencial && minOf(p) > 1 ? [pend[0]] : pend;
 }
 function docPayload(p) {
   return JSON.stringify({numero:p.numero, unidade:p.unidade, finalidade:p.finalidade, justificativa:p.justificativa, processo:p.processo || "", fundamentacao:p.fundamentacao || "",
@@ -860,6 +861,7 @@ function migraNomesDemo() {
   const T = {"Prof. Ricardo Albuquerque":"George Beltrão", "Prof.ª Helena Cavalcanti":"Terezinha Domiciano"}; let mud = false;
   const fix = o => { if (o && T[o.nome]) { o.nome = T[o.nome]; mud = true; } };
   if (S.cfg && S.cfg.signatarios) Object.values(S.cfg.signatarios).forEach(fix);
+  if (S.cfg && !S.cfg._mesmoNivel) { S.cfg._mesmoNivel = true; if (+S.cfg.limiteAlcada === 50000) S.cfg.limiteAlcada = 0; mud = true; }
   Object.values(S.plans || {}).forEach(p => Object.values(p.assinaturas || {}).forEach(fix));
   Object.values(S.sigs || {}).forEach(fix);
   if (mud) saveDemo();
@@ -965,12 +967,12 @@ async function seedDemo() {
         p.processo = "23074." + String(200000 + seq * 4127).slice(0, 6) + "/" + new Date(t).getFullYear() + "-" + String(20 + seq).slice(-2);
         p.fundamentacao = S.cfg.fundamentacao;
         p.despacho = "Encaminho à autoridade competente para autorização da destinação, observada a disponibilidade em reserva técnica e a justificativa da unidade.";
-        p.assinaturasExigidas = requiredSigners(planTotal(p));
+        p.assinaturasExigidas = requiredSigners(); p.assinaturasMinimas = minAssin(planTotal(p));
         p.docHash = await sha256(docPayload(p));
         setStatus(p, s, t); await addEvent(p, "formalizacao", "Instrução concluída e submetida à autorização · Processo " + p.processo, {at:t, by:"u_form", role:"FORMALIZACAO"});
       }
       if (s === "AUTORIZADO") {
-        for (const r of p.assinaturasExigidas) { t += 0.6 * DAY; await demoSign(p, r, t); }
+        for (const r of p.assinaturasExigidas.slice(0, p.assinaturasMinimas || 1)) { t += 0.6 * DAY; await demoSign(p, r, t); }
         setStatus(p, s, t);
       }
       if (s === "SEPARACAO") { setStatus(p, s, t); await addEvent(p, "separacao", "Separação iniciada no Almoxarifado Central", {at:t, by:"u_alm", role:"ALMOXARIFADO"}); }
@@ -982,7 +984,7 @@ async function seedDemo() {
         setStatus(p, s, t); await addEvent(p, "entrega", "Entrega registrada · Recebedor " + p.entrega.recebedor + " · " + plural(planQtd(p), "bem", "bens") + " tombados", {at:t, by:"u_pat", role:"PATRIMONIO"});
       }
     }
-    if (target === "AUTORIZACAO_PRA_OK") { t += 0.8 * DAY; await demoSign(p, "PRA", t); }
+    if (target === "AUTORIZACAO_PRA_OK" && (p.assinaturasMinimas || 1) > 1) { t += 0.8 * DAY; await demoSign(p, "PRA", t); }
     if (target === "INDEFERIDO") {
       t += 1.2 * DAY; p.indeferimento = {por:"u_pra", role:"PRA", at:t, motivo:"Destinação não prioritária frente às demandas de ensino; reavaliar no próximo ciclo."};
       setStatus(p, "INDEFERIDO", t); await addEvent(p, "indeferimento", "Indeferido pelo autorizador: " + p.indeferimento.motivo, {at:t, by:"u_pra", role:"PRA"});
@@ -1091,7 +1093,7 @@ async function sbLoad(force) {
   const plans = {};
   planos.forEach(p => { const en = EN[p.id];
     plans[p.id] = {id:p.id, numero:p.numero, legado:p.legado, status:p.status, unidade:p.unidade, unidadeCode:p.unidade_code || "", orgaoCode:p.orgao_code || "", finalidade:p.finalidade, justificativa:p.justificativa, demanda:p.demanda,
-      processo:p.processo, fundamentacao:p.fundamentacao, despacho:p.despacho, assinaturasExigidas:p.assinaturas_exigidas || [], docHash:p.doc_hash, conferencia:p.conferencia || {}, devolucao:p.devolucao, indeferimento:p.indeferimento, cancelamento:p.cancelamento,
+      processo:p.processo, fundamentacao:p.fundamentacao, despacho:p.despacho, assinaturasExigidas:p.assinaturas_exigidas || [], assinaturasMinimas:p.assinaturas_minimas || null, docHash:p.doc_hash, conferencia:p.conferencia || {}, devolucao:p.devolucao, indeferimento:p.indeferimento, cancelamento:p.cancelamento,
       criadoPor:p.criado_por, criadoEm:ms(p.criado_em), itens:I.o[p.id] || [], etapas:E.o[p.id] || [{s:p.status, at:ms(p.etapa_em)}], eventos:V.o[p.id] || [], assinaturas:A[p.id] || {},
       entrega:en ? {data:ms(en.data), recebedor:en.recebedor, siape:en.siape, cargo:en.cargo, local:en.local, registradoPor:en.registrado_por, tombamentos:T[p.id] || {}} : null};
     Object.values(plans[p.id].assinaturas).forEach(a => a.numero = p.numero); });
@@ -1889,7 +1891,7 @@ function planTrkInfo(p) {
   const stopped = ["INDEFERIDO","CANCELADO"].includes(p.status);
   const lastStage = (p.etapas || []).filter(e => STAGES.includes(e.s)).slice(-1)[0];
   const reached = stopped ? Math.max(0, trkIdx(lastStage ? lastStage.s : "RASCUNHO")) : trkIdx(p.status);
-  const quem = (nextSigner(p) || []).map(r => (S.cfg.signatarios[r] || {}).nome || (S.cfg.signatarios[r] || {}).cargo).join(" e ");
+  const quem = (nextSigner(p) || []).map(r => (S.cfg.signatarios[r] || {}).nome || (S.cfg.signatarios[r] || {}).cargo).join(minOf(p) > 1 ? " e " : " ou ");
   const late = isLate(p), eta = planEta(p);
   const msg = {
     RASCUNHO:["Plano iniciado", p.devolucao ? "Voltou para ajustes antes de seguir para a formalização." : `Iniciado por ${planOrigem(p).txt || "registro no sistema"}. Segue para a formalização.`],
@@ -2016,7 +2018,8 @@ function formPlano(id, preItem, draft) {
     const tot = sel.reduce((a, x) => a + x.qtd * x.vu, 0);
     $("#sel").innerHTML = sel.length ? `<div class="pick-row small muted" style="font-weight:700;border-bottom:1px solid var(--line)"><span>Bem selecionado</span><span class="r-al">Quantidade</span><span class="r-al hide-sm">Subtotal</span><span></span></div>` + sel.map((x, i) => { const d = dispOf(x.itemId); const over = x.qtd > d; return `<div class="pick-row"><div style="min-width:0"><b style="font-size:13.5px">${esc(x.descricao)}</b><div class="small ${over ? "" : "muted"}" style="${over ? "color:var(--crit-ink);font-weight:600" : ""}">${over ? "Acima do disponível: " : "Disponível: "}${fmtN(d)} · ${BRL.format(x.vu)} cada</div></div><div class="qty-ctrl" style="justify-content:flex-end"><input class="inp num" type="number" min="1" max="${d}" value="${x.qtd}" data-q="${i}" aria-label="Quantidade"></div><div class="r-al num hide-sm" style="font-weight:600">${BRL.format(x.qtd * x.vu)}</div><button class="btn ghost icon-btn" data-rm="${i}" aria-label="Remover">${ic("x")}</button></div>`; }).join("") + `<div class="row" style="justify-content:flex-end;padding-top:10px"><span class="ink2">Total do plano</span><b class="num" style="font-size:18px">${BRL.format(tot)}</b></div>` : '<p class="muted small">Nenhum bem selecionado ainda. Busque acima e toque para adicionar.</p>';
     const req = requiredSigners(tot);
-    $("#alc").innerHTML = sel.length ? `<div class="alert ${req.length > 1 ? "warning" : "good"}"><div class="ic">${ic("shield")}</div><div><b>Alçada de autorização: ${req.map(r => esc(S.cfg.signatarios[r].cargo)).join(" e ")}</b><p>${S.cfg.exigirAmbos ? "A configuração exige as duas assinaturas em todos os planos." : `Planos até ${BRL.format(S.cfg.limiteAlcada)} são autorizados pelo autorizador de nível 1 (${esc(autz("PRA"))}); acima disso, também pelo de nível 2 (${esc(autz("REITORIA"))})${S.cfg.sequencial ? ", nesta ordem" : ""}.`}</p></div></div>` : "";
+    const dois = minAssin(tot) > 1;
+    $("#alc").innerHTML = sel.length ? `<div class="alert ${dois ? "warning" : "good"}"><div class="ic">${ic("shield")}</div><div><b>${dois ? "Autorização: os dois autorizadores assinam" : "Autorização: qualquer um dos autorizadores"}</b><p>${req.map(r => esc(S.cfg.signatarios[r].cargo)).join(dois ? " e " : " ou ")}${dois ? (S.cfg.exigirAmbos ? " · a configuração exige as duas assinaturas." : ` · acima de ${BRL.format(S.cfg.limiteAlcada)}, a configuração exige as duas assinaturas.`) : "."}</p></div></div>` : "";
   };
   m.addEventListener("click", e => {
     const pk = e.target.closest("[data-pick]"); if (pk) { const it = S.items[pk.dataset.pick]; sel.push({itemId:it.id, codigo:it.codigo, descricao:it.descricao, qtd:1, vu:it.valorUnitario}); drawPick(); drawSel(); setTimeout(() => { const inp = $$("[data-q]", m).pop(); inp && inp.select(); }, 0); }
@@ -2068,7 +2071,7 @@ function vPlano() {
     const cls = stopped && i === reachedIdx + 1 ? "stop" : i < curIdx || (p.status === "ENTREGUE" && i === curIdx) || (stopped && i <= reachedIdx) ? "done" : i === curIdx ? "cur" : "";
     return `<div class="s ${cls}"><div class="d">${cls === "done" ? ic("check") : cls === "stop" ? ic("x") : ""}</div>${ST[s].short || ST[s].l}${e ? `<small>${fmtD(e.at)}</small>` : ""}</div>`; }).join("");
   const actions = p.legado ? "" : planActions(p);
-  const req = p.assinaturasExigidas || requiredSigners(total);
+  const req = sigsVisiveis(p);
   const sigBlocks = req.map(r => { const a = (p.assinaturas || {})[r]; const nx = nextSigner(p);
     return `<div class="alert ${a ? "good" : ""}" style="${a ? "" : "background:var(--panel)"}"><div class="ic" style="${a ? "" : "background:var(--panel-2);color:var(--muted)"}">${ic(a ? "check" : "autorizacoes")}</div><div style="min-width:0"><b>${esc(S.cfg.signatarios[r].cargo)}</b>${a ? `<p>Assinado por ${esc(nameOf(a.by))} em ${fmtDT(a.at)}</p><p class="small muted">Código ${vcode(a.sig)}</p>` : `<p>${p.status === "AUTORIZACAO" ? (nx && nx.includes(r) ? "Aguardando assinatura" : "Aguarda a assinatura anterior") : p.status === "INDEFERIDO" ? "Não assinado" : "Assinatura prevista após a instrução"}</p>`}</div></div>`; }).join("");
   return `
@@ -2136,7 +2139,7 @@ function act_formalize(id) {
     <div class="form-grid">
       <div class="field"><label>Número do processo no SIPAC</label><input class="inp" id="proc" value="${esc(p0.processo || "")}" placeholder="23074.000000/2026-00" required></div>
       <div class="field"><label>Alçada calculada</label><input class="inp" disabled value="${esc(req.map(r => S.cfg.signatarios[r].cargo).join(" + "))} · ${BRL.format(tot)}"></div>
-      ${(() => { const d = detList().find(x => x.planoId === id && x.assinatura && ["PRA","REITORIA"].includes(x.papel)); return d ? `<div class="field full"><div class="alert good"><div class="ic">${ic("check")}</div><div><b>Decisão assinada por ${esc(d.assinatura.cargo || d.papel)} (${esc(d.numero)})</b><p>Ela já vale como autorização: ao concluir, o plano segue direto para a separação${d.papel === "PRA" && req.includes("REITORIA") ? ", depois da assinatura do autorizador de nível 2, porque o valor passa do limite de alçada" : ""}. Se você mudar os bens ou as quantidades decididos, o termo volta para assinatura.</p></div></div></div>` : ""; })()}
+      ${(() => { const d = detList().find(x => x.planoId === id && x.assinatura && ["PRA","REITORIA"].includes(x.papel)); return d ? `<div class="field full"><div class="alert good"><div class="ic">${ic("check")}</div><div><b>Decisão assinada por ${esc(d.assinatura.cargo || d.papel)} (${esc(d.numero)})</b><p>Ela já vale como autorização: ao concluir, o plano segue direto para a separação${minAssin(tot) > 1 ? ", depois da assinatura do outro autorizador, que a configuração exige para este valor" : ""}. Se você mudar os bens ou as quantidades decididos, o termo volta para assinatura.</p></div></div></div>` : ""; })()}
       <div class="field full"><label>Fundamentação</label><textarea class="inp" id="fund">${esc(p0.fundamentacao || S.cfg.fundamentacao)}</textarea></div>
       <div class="field full"><label>Despacho de encaminhamento</label><textarea class="inp" id="desp">${esc(p0.despacho || `Encaminho à autoridade competente para autorização da destinação de ${plural(planQtd(p0), "bem", "bens")} da reserva técnica à unidade ${p0.unidade}, no valor total de ${BRL.format(tot)}, conforme justificativa apresentada.`)}</textarea></div>
     </div>`, foot:`<button class="btn" data-act="close">Cancelar</button><button class="btn primary" id="go">Submeter à autorização</button>`});
@@ -2147,17 +2150,17 @@ function act_formalize(id) {
     // a decisão assinada do autorizador vale como autorização (se os bens não mudaram)
     const d = detList().find(x => x.planoId === id && x.situacao === "ATENDIDA" && x.assinatura && ["PRA","REITORIA"].includes(x.papel));
     const igual = d && (() => { const a = {}, b = {}; p.itens.forEach(li => a[li.itemId] = (a[li.itemId] || 0) + li.qtd); d.itens.forEach(i => b[i.material_id] = (b[i.material_id] || 0) + i.quantidade); return Object.keys({...a, ...b}).every(k => a[k] === b[k]); })();
-    const exig = igual && d.papel === "REITORIA" ? ["REITORIA"] : req;
-    p.assinaturasExigidas = exig; p.assinaturas = {}; p.docHash = await sha256(docPayload(p));
+    const exig = req, minimo = minAssin(tot);
+    p.assinaturasExigidas = exig; p.assinaturasMinimas = minimo; p.assinaturas = {}; p.docHash = await sha256(docPayload(p));
     setStatus(p, "AUTORIZACAO"); await addEvent(p, "formalizacao", "Instrução concluída · Processo " + proc);
-    let msgFim = p.numero + " submetido a " + exig.map(r => S.cfg.signatarios[r].cargo).join(" e ") + ".";
+    let msgFim = p.numero + " submetido à autorização (" + exig.map(r => S.cfg.signatarios[r].cargo).join(minimo > 1 ? " e " : " ou ") + ").";
     if (igual && exig.includes(d.papel)) {
       const t = d.assinatura.assinadoEm || d.criadoEm; const sig = await sha256(p.docHash + "|" + d.autor + "|" + d.papel + "|" + t + "|decisao");
       const rec = {planId:p.id, numero:p.numero, role:d.papel, by:d.autor, at:t, docHash:p.docHash, sig, cargo:d.assinatura.cargo || S.cfg.signatarios[d.papel].cargo, nome:d.assinatura.nome || S.cfg.signatarios[d.papel].nome, origem:"decisao_assinada", determinacao:d.numero};
       if (await persistSig(rec)) { p.assinaturas[d.papel] = rec; await addEvent(p, "assinatura", `Autorização dada pela decisão assinada de ${rec.cargo} (${d.numero}) · código ${vcode(sig)}`, {by:d.autor, role:d.papel}); }
-      const pend = exig.filter(r => !p.assinaturas[r]);
+      const pend = pendSign(p);
       if (!pend.length) { setStatus(p, "AUTORIZADO"); await addEvent(p, "autorizado", "Destinação autorizada · bens reservados para a unidade", {by:d.autor, role:d.papel}); msgFim = `${p.numero} formalizado. A decisão assinada já vale como autorização: segue para a separação.`; }
-      else msgFim = `${p.numero} formalizado. Valor acima do limite de alçada: falta a assinatura de ${S.cfg.signatarios[pend[0]].cargo}.`;
+      else msgFim = `${p.numero} formalizado. A configuração exige as duas assinaturas: falta a de ${S.cfg.signatarios[pend[0]].cargo}.`;
     } else if (d) await addEvent(p, "formalizacao", `Os bens mudaram em relação à decisão ${d.numero}: o termo segue para assinatura`);
     if (await persist("planos", id, p)) { closeModal(); toast(msgFim); renderShell(); render(); }
   };
@@ -2187,7 +2190,7 @@ async function act_sign(id) {
     if (!await persistSig(rec)) return;
     p.assinaturas = p.assinaturas || {}; p.assinaturas[role] = rec;
     await addEvent(p, "assinatura", "Autorização assinada eletronicamente por " + rec.cargo + " · código " + vcode(sig));
-    const pend = (p.assinaturasExigidas || []).filter(r => !p.assinaturas[r]);
+    const pend = pendSign(p);
     if (!pend.length) { setStatus(p, "AUTORIZADO"); await addEvent(p, "autorizado", "Destinação autorizada · bens reservados para a unidade"); }
     if (await persist("planos", id, p)) { closeModal(); toast(pend.length ? "Assinado. Segue para " + S.cfg.signatarios[pend[0]].cargo + "." : "Assinado. Destinação autorizada."); renderShell(); render(); }
   };
@@ -2728,7 +2731,7 @@ function seedEmpenhosDemo() {
 
 // ---------- DECISÕES DE DESTINAÇÃO (autorizadores, pela tela ou pelo chat) ----------
 const canDeterminar = () => has("PRA", "REITORIA"); // decisão: só os autorizadores (níveis 1 e 2), com assinatura
-const autz = r => (S.cfg.signatarios[r] || {}).cargo || (r === "PRA" ? "autorizador de nível 1" : "autorizador de nível 2");
+const autz = r => (S.cfg.signatarios[r] || {}).cargo || "autorizador";
 const canPropor = () => has("PATRIMONIO", "ALMOXARIFADO", "ADMIN"); // DIPA, Almoxarifado e gestor propõem; a decisão é da autoridade
 const detPropostas = () => detList().filter(d => d.situacao === "PROPOSTA");
 const detList = () => Object.values(S.determ || {}).sort((a, b) => b.criadoEm - a.criadoEm);
@@ -2963,7 +2966,7 @@ function chatDeterminarMontar(s, msg) {
   if (canDeterminar()) {
     act({tipo:"determinar", rotulo:"Assinar e iniciar o plano", det:dados});
     act({tipo:"determinar_ajustar", rotulo:"Ajustar antes", det:dados});
-    return `${disp1}\n${resumo}\nA decisão é registrada com a sua **assinatura eletrônica** e já vale como autorização: o plano é iniciado, a Formalização é avisada e, depois de formalizado, segue direto para a separação${canDeterminar() && R() === "PRA" && dados.itens.reduce((a, i) => a + i.quantidade * ((S.items[i.material_id] || {}).valorUnitario || 0), 0) > (S.cfg.limiteAlcada || 50000) ? " (como o valor passa do limite de alçada, o autorizador de nível 2 também assina)" : ""}.`;
+    return `${disp1}\n${resumo}\nA decisão é registrada com a sua **assinatura eletrônica** e já vale como autorização: o plano é iniciado, a Formalização é avisada e, depois de formalizado, segue direto para a separação${minAssin(dados.itens.reduce((a, i) => a + i.quantidade * ((S.items[i.material_id] || {}).valorUnitario || 0), 0)) > 1 ? " (para este valor, a configuração exige também a assinatura do outro autorizador)" : ""}.`;
   }
   if (canPropor()) {
     act({tipo:"propor", rotulo:"Enviar para o autorizador", det:dados});
@@ -3016,7 +3019,7 @@ function act_batch() {
       if (!await persistSig(rec)) break;
       p.assinaturas = p.assinaturas || {}; p.assinaturas[role] = rec;
       await addEvent(p, "assinatura", "Autorização assinada eletronicamente por " + rec.cargo + " · código " + vcode(sig) + " (lote)");
-      if (!(p.assinaturasExigidas || []).filter(r => !p.assinaturas[r]).length) { setStatus(p, "AUTORIZADO"); await addEvent(p, "autorizado", "Destinação autorizada · bens reservados para a unidade"); }
+      if (!pendSign(p).length) { setStatus(p, "AUTORIZADO"); await addEvent(p, "autorizado", "Destinação autorizada · bens reservados para a unidade"); }
       if (await persist("planos", id, p)) n++; else break;
     }
     closeModal(); toast(plural(n, "termo assinado", "termos assinados") + "."); renderShell(); render();
@@ -3110,7 +3113,7 @@ function qrSvg(text) {
 }
 function docHeader() { return `<div class="dh"><b>${esc(S.cfg.instituicao.toUpperCase())}</b><span>${esc(S.cfg.orgao)}</span></div>`; }
 async function docAutorizacao(p, preview) {
-  const tot = planTotal(p); const req = p.assinaturasExigidas || requiredSigners(tot);
+  const tot = planTotal(p); const req = sigsVisiveis(p);
   const firstSig = Object.values(p.assinaturas || {}).sort((a, b) => a.at - b.at)[0];
   const lastSig = Object.values(p.assinaturas || {}).sort((a, b) => b.at - a.at)[0];
   const h = p.docHash || await sha256(docPayload(p));
@@ -3124,7 +3127,7 @@ async function docAutorizacao(p, preview) {
       <tr><th colspan="2">Total</th><th style="text-align:right">${fmtN(planQtd(p))}</th><th></th><th style="text-align:right">${BRL.format(tot)}</th></tr></tbody></table>
     <p><b>Fundamentação.</b> ${esc(p.fundamentacao || S.cfg.fundamentacao)}</p>
     ${p.despacho ? `<p><b>Despacho.</b> ${esc(p.despacho)}</p>` : ""}
-    <p>Considerando a instrução do processo e a disponibilidade dos bens em reserva técnica, ${req.length > 1 ? "as autoridades signatárias AUTORIZAM" : "a autoridade signatária AUTORIZA"} a destinação dos bens acima à unidade indicada, devendo o Almoxarifado Central proceder à separação e a Divisão de Patrimônio ao tombamento e à emissão do termo de responsabilidade.</p>
+    <p>Considerando a instrução do processo e a disponibilidade dos bens em reserva técnica, ${req.length > 1 && minOf(p) > 1 ? "as autoridades signatárias AUTORIZAM" : "a autoridade signatária AUTORIZA"} a destinação dos bens acima à unidade indicada, devendo o Almoxarifado Central proceder à separação e a Divisão de Patrimônio ao tombamento e à emissão do termo de responsabilidade.</p>
     <div class="sigs">${req.map(r => { const a = (p.assinaturas || {})[r]; return `<div class="sig ${a ? "ok" : ""}"><b>${esc(a ? a.nome : S.cfg.signatarios[r].nome)}</b>${esc(a ? a.cargo : S.cfg.signatarios[r].cargo)}<br>${a ? `Assinado eletronicamente em ${fmtDT(a.at)}${a.evid && a.evid.codigo_email ? "<br>Identidade confirmada por senha e código enviado ao e-mail" : a.evid && a.evid.senha_confirmada_em ? "<br>Identidade confirmada por senha" : ""}<br>Código de verificação <b>${vcode(a.sig)}</b>` : `<i>Pendente de assinatura</i>`}</div>`; }).join("")}</div>
     <div class="auth">${lastSig ? qrSvg(urlVerificacao(lastSig.sig)) : ""}<div>Documento gerado pelo sistema Destina — Gestão da Reserva Técnica (${esc(S.cfg.sigla)}).<br>Hash SHA-256 do conteúdo: <span style="word-break:break-all">${h}</span><br>${lastSig ? `Autenticidade verificável pelo QR Code ao lado, ou na tela “Documentos e autenticidade”, pelo código <span class="code">${vcode(lastSig.sig)}</span>.` : "Este termo ainda não tem assinaturas."}</div></div></div>`;
 }
@@ -3172,12 +3175,12 @@ function vConfig() {
       <div class="field full"><label>Fundamentação padrão dos termos</label><textarea class="inp" name="fundamentacao">${esc(c.fundamentacao)}</textarea></div>
     </div></section>
     <section class="card c-6"><div class="card-h"><h3>Autoridades signatárias e alçada</h3></div><div class="card-b form-grid">
-      <div class="field"><label>Autorizador nível 1 — nome</label><input class="inp" name="praNome" value="${esc(c.signatarios.PRA.nome)}"></div>
+      <div class="field"><label>Autorizador — nome</label><input class="inp" name="praNome" value="${esc(c.signatarios.PRA.nome)}"></div>
       <div class="field"><label>Cargo</label><input class="inp" name="praCargo" value="${esc(c.signatarios.PRA.cargo)}"></div>
-      <div class="field"><label>Autorizador nível 2 — nome</label><input class="inp" name="reiNome" value="${esc(c.signatarios.REITORIA.nome)}"></div>
+      <div class="field"><label>Autorizador — nome</label><input class="inp" name="reiNome" value="${esc(c.signatarios.REITORIA.nome)}"></div>
       <div class="field"><label>Cargo</label><input class="inp" name="reiCargo" value="${esc(c.signatarios.REITORIA.cargo)}"></div>
-      <div class="field"><label>Limite de alçada do nível 1 (R$)</label><input class="inp num" name="limiteAlcada" type="number" min="0" step="100" value="${c.limiteAlcada}"><span class="hint">Acima deste valor, o autorizador de nível 2 também assina.</span></div>
-      <div class="field" style="justify-content:flex-end;gap:10px"><label class="check"><input type="checkbox" name="exigirAmbos" ${c.exigirAmbos ? "checked" : ""}> Exigir as duas assinaturas sempre</label><label class="check"><input type="checkbox" name="sequencial" ${c.sequencial ? "checked" : ""}> Nível 1 assina antes do nível 2</label></div>
+      <div class="field"><label>Exigir as duas assinaturas acima de (R$)</label><input class="inp num" name="limiteAlcada" type="number" min="0" step="100" value="${c.limiteAlcada}"><span class="hint">Os autorizadores têm o mesmo nível: com 0, a assinatura de qualquer um deles basta, de qualquer valor.</span></div>
+      <div class="field" style="justify-content:flex-end;gap:10px"><label class="check"><input type="checkbox" name="exigirAmbos" ${c.exigirAmbos ? "checked" : ""}> Exigir as duas assinaturas sempre</label><label class="check"><input type="checkbox" name="sequencial" ${c.sequencial ? "checked" : ""}> Quando forem duas, o primeiro signatário assina antes</label></div>
     </div></section>
     <section class="card c-12"><div class="card-h"><h3>Prazos e alertas</h3><span class="sub">em dias</span></div><div class="card-b form-grid">
       ${["RASCUNHO","INSTRUCAO","AUTORIZACAO","AUTORIZADO","SEPARACAO","PRONTO"].map(s => `<div class="field"><label>Prazo em “${ST[s].l}”</label><input class="inp num" type="number" min="1" name="sla_${s}" value="${c.sla[s]}"></div>`).join("")}
@@ -3632,7 +3635,7 @@ function rulesText() {
   return `Você é o Assistente do Destina, sistema de gestão da reserva técnica de bens permanentes da ${S.cfg.instituicao} (${S.cfg.sigla}).
 Hoje é ${new Date().toLocaleDateString("pt-BR")}. Você conversa com ${S.me.name || "um servidor"}, no perfil "${rl}". Esse perfil pode: ${perms}.
 
-Fluxo de um plano de destinação: Rascunho → Em instrução (Formalização registra processo SIPAC) → Aguardando autorização (assina o autorizador de nível 1; acima de ${BRL.format(S.cfg.limiteAlcada)}, também o de nível 2${S.cfg.sequencial ? ", nessa ordem" : ""}) → Autorizado → Em separação (Almoxarifado confere) → Pronto para entrega → Entregue (Patrimônio registra tombamentos e termo de responsabilidade). "Disponível" = recebido − em trâmite − reservado − entregue. Planos "HIST" são saídas antigas importadas da planilha. As unidades seguem a hierarquia SIPAC: filtrar por um órgão (ex.: "CCS", "PRA") inclui as subunidades dele.
+Fluxo de um plano de destinação: Rascunho → Em instrução (Formalização registra processo SIPAC) → Aguardando autorização (assina qualquer um dos autorizadores, que têm o mesmo nível${+S.cfg.limiteAlcada > 0 || S.cfg.exigirAmbos ? "; a configuração exige as duas assinaturas " + (S.cfg.exigirAmbos ? "sempre" : "acima de " + BRL.format(S.cfg.limiteAlcada)) : ""}) → Autorizado → Em separação (Almoxarifado confere) → Pronto para entrega → Entregue (Patrimônio registra tombamentos e termo de responsabilidade). "Disponível" = recebido − em trâmite − reservado − entregue. Planos "HIST" são saídas antigas importadas da planilha. As unidades seguem a hierarquia SIPAC: filtrar por um órgão (ex.: "CCS", "PRA") inclui as subunidades dele.
 
 Controle por empenho: o Almoxarifado registra o empenho quando os bens chegam (entram no saldo) → o processo de pagamento vai à DIPA → a DIPA gera os tombamentos → agenda e conclui o emplaquetamento. Na entrega, os números de tombamento baixam os bens da reserva.
 
@@ -4106,8 +4109,8 @@ function nluResponder(nl, msg) {
       return fecha();
     }
     case "pessoas": {
-      const sg = ["PRA","REITORIA"].filter(r => (S.cfg.signatarios || {})[r]).map(r => `- Autorizador nível ${r === "PRA" ? 1 : 2}: ${esc(S.cfg.signatarios[r].nome)} (${esc(S.cfg.signatarios[r].cargo)})`).join("\n");
-      return `**Quem autoriza**\n${sg}\n- Limite de alçada do autorizador de nível 1: ${BRL.format(S.cfg.limiteAlcada || 0)} (acima disso, assina também o de nível 2)`;
+      const sg = ["PRA","REITORIA"].filter(r => (S.cfg.signatarios || {})[r]).map(r => `- Autorizador: ${esc(S.cfg.signatarios[r].nome)} (${esc(S.cfg.signatarios[r].cargo)})`).join("\n");
+      return `**Quem autoriza**\n${sg}\n- Os autorizadores têm o mesmo nível: ${S.cfg.exigirAmbos ? "a configuração exige as duas assinaturas" : +S.cfg.limiteAlcada > 0 ? `a assinatura de qualquer um basta até ${BRL.format(S.cfg.limiteAlcada)}; acima disso, assinam os dois` : "a assinatura de qualquer um deles basta, de qualquer valor"}.`;
     }
     case "plano_detalhe": case "empenho_detalhe": case "tombamento": return null; // tratados pelas regras específicas
   }
@@ -4581,9 +4584,9 @@ function localAnswerRegras(q, msg) {
   }
   // h) usuários, signatários e papéis
   if (/USUARIO|SIGNATARI|QUEM ASSINA|QUEM AUTORIZA|ADMINISTRADOR|EQUIPE|PERFIS|PAPEIS/.test(n)) {
-    const sg = ["PRA","REITORIA"].filter(r => (S.cfg.signatarios || {})[r]).map(r => `- Autorizador nível ${r === "PRA" ? 1 : 2}: ${esc(S.cfg.signatarios[r].nome)} (${esc(S.cfg.signatarios[r].cargo)})`).join("\n");
+    const sg = ["PRA","REITORIA"].filter(r => (S.cfg.signatarios || {})[r]).map(r => `- Autorizador: ${esc(S.cfg.signatarios[r].nome)} (${esc(S.cfg.signatarios[r].cargo)})`).join("\n");
     const us = (S.perfisList || []).filter(p => p.aprovado);
-    return "**Signatários**\n" + sg + `\n- Limite de alçada do autorizador de nível 1: ${BRL.format(S.cfg.limiteAlcada || 0)}` + (us.length ? "\n\n**Usuários aprovados**\n" + lista(us, p => `- ${esc(p.nome || p.email)}: ${esc(p.papeis.map(r => ROLES[r] ? ROLES[r].label : r).join(", "))}`, 15) : "");
+    return "**Signatários**\n" + sg + `\n- ${S.cfg.exigirAmbos ? "Exige as duas assinaturas" : +S.cfg.limiteAlcada > 0 ? "Duas assinaturas acima de " + BRL.format(S.cfg.limiteAlcada) : "Qualquer autorizador assina sozinho"}` + (us.length ? "\n\n**Usuários aprovados**\n" + lista(us, p => `- ${esc(p.nome || p.email)}: ${esc(p.papeis.map(r => ROLES[r] ? ROLES[r].label : r).join(", "))}`, 15) : "");
   }
   // i) entradas recentes
   if (/ENTRADA|CHEGOU|CHEGARAM|RECEBIDO|RECEBEMOS|COMPRAD|AQUISIC|EMPENHO|NOTA FISCAL|PREGAO|FORNECEDOR/.test(n)) {
