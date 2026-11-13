@@ -18,6 +18,8 @@ jobs:
         run: |
           pip install playwright
           python -m playwright install --with-deps chromium
+      - name: Sino de avisos e demandas
+        run: python tests/avisos.py
       - name: Pergunta de confirmação antes de gravar
         run: python tests/confirmacao.py
       - name: Conversas registradas (inclui os bugs já corrigidos)

@@ -74,6 +74,24 @@ p{margin:0}
 #top .search svg{width:18px;height:18px;flex:none}
 kbd{font-family:inherit;font-size:11px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px;color:var(--ink-2);background:var(--panel-2)}
 .top-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.sino{position:relative}
+.sino .n{position:absolute;top:2px;right:2px;min-width:18px;height:18px;padding:0 5px;border-radius:99px;background:#c0392b;color:#fff;font-size:11px;font-weight:800;display:grid;place-items:center;line-height:1;border:2px solid var(--bg)}
+.av-pop{position:fixed;top:64px;right:16px;width:400px;max-width:calc(100vw - 24px);max-height:calc(100vh - 90px);overflow:auto;z-index:80;background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:0 20px 50px rgba(0,0,0,.2);animation:pop .14s}
+.av-pop .h{display:flex;align-items:center;gap:8px;padding:14px 16px 10px;border-bottom:1px solid var(--line-2)}
+.av-pop .h b{font-size:15px}
+.av-pop .h svg{width:18px;height:18px;flex:none;color:var(--brand)}
+.av-pop .g{padding:8px 16px 2px;font-size:12px;font-weight:700;color:var(--muted)}
+.av-it{display:grid;grid-template-columns:10px 1fr;gap:10px;padding:10px 16px;text-decoration:none;color:var(--ink);cursor:pointer;border:0;background:none;width:100%;text-align:left;font:inherit}
+.av-it:hover,.av-it:focus-visible{background:var(--panel-2)}
+.av-it i{width:8px;height:8px;border-radius:50%;margin-top:6px;background:var(--brand)}
+.av-it.novo i{background:#c0392b}
+.av-it.info i{background:var(--muted)}
+.av-it b{display:block;font-size:14px;font-weight:650}
+.av-it small{display:block;color:var(--muted);font-size:12.5px;line-height:1.4;margin-top:1px}
+.av-pop .f{padding:10px 16px 14px;border-top:1px solid var(--line-2);font-size:12.5px;color:var(--muted)}
+.av-novo{position:fixed;right:22px;bottom:86px;z-index:310;width:340px;max-width:calc(100vw - 24px);background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--brand);border-radius:12px;box-shadow:0 16px 40px rgba(0,0,0,.22);padding:12px 14px;animation:pop .16s}
+.av-novo b{display:block;font-size:14px}
+.av-novo small{display:block;color:var(--muted);margin:2px 0 8px}
 .mode-chip{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;padding:5px 10px;border-radius:99px;border:1px solid var(--line);background:var(--panel);cursor:pointer}
 .mode-chip i{width:8px;height:8px;border-radius:50%;background:var(--warn)}
 .mode-chip.oficial i{background:var(--good)}
@@ -629,6 +647,7 @@ const IC = {
   down:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
   up:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>',
   sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  sino:'<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
   moon:'<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
   back:'<path d="M15 18l-6-6 6-6"/>',
   user:'<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
@@ -1127,7 +1146,7 @@ async function sbDo(fn, args, okMsg) {
 function startPolling() {
   clearInterval(SBTIMER);
   SBTIMER = setInterval(async () => {
-    if (S.mode !== "oficial" || !SB.s || document.visibilityState !== "visible") return;
+    if (S.mode !== "oficial" || !SB.s || (document.visibilityState !== "visible" && !(lsGet("destina_av_nav") && "Notification" in window && Notification.permission === "granted"))) return;
     try { if (await sbLoad()) { applyMyRoles(); const a = document.activeElement; if (a && $("#view").contains(a) && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) return; renderShell(); render(); } } catch (e) { if (e.sessao) { SB.clear(); enterOfficial(); } }
   }, 25000);
 }
@@ -1312,6 +1331,7 @@ function renderShell() {
     <div class="top-right">
       <button class="mode-chip ${S.mode}" data-act="${S.mode === "oficial" ? "who" : (S.officialAvailable ? "to-oficial" : "about-mode")}" title="Ambiente atual"><i></i><span>${S.mode === "oficial" ? (S.me && S.me.teste ? "Oficial · conta de teste" : "Oficial") : "Demonstração"}</span></button>
       ${podeChat() ? `<button class="btn ghost sm layout-btn" data-act="layout-conversa" title="Usar só o assistente, em tela cheia"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Modo conversa</span></button>` : ""}
+      ${S.me && S.me.id && S.role ? (() => { const n = avisosBadge(); return `<button class="btn ghost icon-btn sino" data-act="avisos" aria-label="Avisos${n ? ": " + n + " pendentes" : ""}" title="Avisos e demandas">${ic("sino")}${n ? `<span class="n">${n > 99 ? "99+" : n}</span>` : ""}</button>`; })() : ""}
       <button class="btn ghost icon-btn" data-act="theme" aria-label="Alternar tema claro ou escuro">${ic(document.documentElement.dataset.theme === "dark" ? "sun" : "moon")}</button>
       <button class="who" data-act="who" aria-label="Trocar perfil">${av}<span class="t"><b>${esc(S.me.name || "Você")}</b><small>${esc(roleLabel)}</small></span></button>
     </div>`;
@@ -1320,6 +1340,7 @@ function renderShell() {
   mob.push(fourth);
   const short = {painel:"Painel", reserva:"Reserva", planos:"Planos", autorizacoes:"Assinar", entregas:"Entregas", monitoramento:"Alertas"};
   aplicarLayout();
+  setTimeout(avisosChecar, 0);
   $("#bottom").innerHTML = mob.map(k => { const c = navCount(k); return `<a href="#${k}" ${cur === k ? 'aria-current="page"' : ""}>${ic(k)}<span>${short[k]}</span>${c ? `<span class="badge">${c}</span>` : ""}</a>`; }).join("") + `<a href="#" data-act="more">${ic("mais")}<span>Mais</span></a>`;
 }
 function logoSvg() {
@@ -3275,6 +3296,103 @@ document.addEventListener("mouseover", e => { const el = e.target.closest("[data
 document.addEventListener("mousemove", e => { if (!tip.classList.contains("on")) return; const w = tip.offsetWidth, h = tip.offsetHeight; let x = e.clientX + 14, y = e.clientY + 14; if (x + w > innerWidth - 8) x = e.clientX - w - 14; if (y + h > innerHeight - 8) y = e.clientY - h - 14; tip.style.left = x + "px"; tip.style.top = y + "px"; });
 document.addEventListener("scroll", () => tip.classList.remove("on"), true);
 
+// ---------- avisos: demandas de cada usuário (sino na barra superior) ----------
+function demandas() {
+  const out = [];
+  for (const x of myPending()) {
+    const p = x.p;
+    const a = p.status === "RASCUNHO" && p.devolucao ? "Ajustar plano devolvido" : x.a;
+    out.push({k:"pl:" + p.id + ":" + p.status, t:a + " · " + p.numero, s:p.unidade + (p.status === "RASCUNHO" && p.devolucao ? " — " + p.devolucao : ""), href:"#plano-" + p.id, acao:true, desde:stageEnteredAt(p)});
+  }
+  if (canDeterminar()) for (const d of detPropostas()) out.push({k:"det:" + d.id, t:"Decidir proposta " + d.numero, s:d.unidade + " · proposta por " + nameOf(d.propostoPor), href:"#planos", acao:true, desde:d.propostoEm || d.criadoEm});
+  if (S.me && S.me.id) for (const d of detList()) if (d.propostoPor === S.me.id && d.situacao === "RECUSADA") out.push({k:"rec:" + d.id, t:"Proposta " + d.numero + " não aprovada", s:d.unidade + (d.motivoRecusa ? " — " + d.motivoRecusa : ""), href:"#planos", acao:false, desde:d.criadoEm});
+  if (S.me && S.me.id) for (const d of detList()) if (d.propostoPor === S.me.id && d.situacao === "ATENDIDA" && d.planoId && S.plans[d.planoId]) out.push({k:"ok:" + d.id, t:"Proposta " + d.numero + " aprovada", s:"Virou o " + S.plans[d.planoId].numero + " · " + d.unidade, href:"#plano-" + d.planoId, acao:false, desde:d.criadoEm});
+  try {
+    for (const e of empList()) {
+      let a = "";
+      if (e.situacao === "RECEBIDO" && R() === "ALMOXARIFADO") a = "Encaminhar processo à DIPA";
+      else if (empCanTombar() && e.situacao === "NA_DIPA") a = "Tombar os bens";
+      else if (empCanTombar() && e.situacao === "TOMBADO") a = "Agendar emplaquetamento";
+      else if (empCanTombar() && e.situacao === "EMPLAQUETAMENTO_AGENDADO" && e.emplData && e.emplData <= now() + DAY) a = "Concluir emplaquetamento";
+      if (a) out.push({k:"emp:" + e.id + ":" + e.situacao, t:a + " · empenho " + e.numero, s:(e.fornecedor || "") + " · " + plural(empQtd(e), "bem", "bens"), emp:e.id, acao:true, desde:e.recebidoEm});
+    }
+  } catch (x) {}
+  return out;
+}
+const avKey = () => "destina_avisos_" + S.mode + "_" + (S.me && S.me.id) + "_" + R();
+const avVistos = () => new Set(lsGet(avKey()) || []);
+function avisosBadge() { try { const v = avVistos(); return demandas().filter(d => d.acao || !v.has(d.k)).length; } catch (e) { return 0; } }
+let AV_ULT = null;
+function avisosChecar() {
+  if (!S.me || !S.me.id || !S.role) return;
+  let ds; try { ds = demandas(); } catch (e) { return; }
+  const chave = avKey(), conhecidos = lsGet(chave + "_c");
+  const atuais = ds.map(d => d.k);
+  if (AV_ULT !== chave) {
+    AV_ULT = chave;
+    if (!conhecidos) { lsSet(chave + "_c", atuais); }
+    const n = ds.filter(d => d.acao).length;
+    const ss = "destina_av_resumo_" + chave;
+    if (n && !sessionStorage.getItem(ss)) { sessionStorage.setItem(ss, "1"); avisoFlutuante({t:n === 1 ? "Você tem 1 demanda aguardando" : `Você tem ${n} demandas aguardando`, s:ds.filter(d => d.acao).slice(0, 2).map(d => d.t).join(" · "), abrir:true}); }
+    if (!conhecidos) return;
+  }
+  const antes = new Set(lsGet(chave + "_c") || []);
+  const novos = ds.filter(d => !antes.has(d.k));
+  lsSet(chave + "_c", atuais);
+  if (!novos.length) return;
+  const d = novos[0];
+  avisoFlutuante({t:(novos.length > 1 ? novos.length + " novas demandas · " : d.acao ? "Nova demanda · " : "Novidade · ") + d.t, s:d.s, k:d.k});
+  if (lsGet("destina_av_nav") && "Notification" in window && Notification.permission === "granted") {
+    try { const nn = new Notification("Destina · " + (d.acao ? "nova demanda" : "novidade"), {body:d.t + (d.s ? "\n" + d.s : ""), tag:d.k}); nn.onclick = () => { window.focus(); avisosIr(d.k); nn.close(); }; } catch (e) {}
+  }
+}
+function avisoFlutuante({t, s, k, abrir}) {
+  document.querySelectorAll(".av-novo").forEach(x => x.remove());
+  const el = document.createElement("div"); el.className = "av-novo"; el.setAttribute("role", "status");
+  el.innerHTML = `<b>${esc(t)}</b>${s ? `<small>${esc(s)}</small>` : ""}<div class="row" style="gap:6px;justify-content:flex-end"><button class="btn sm ghost" data-x>Depois</button><button class="btn sm primary" data-v>${k ? "Ver" : "Ver avisos"}</button></div>`;
+  document.body.appendChild(el);
+  el.querySelector("[data-x]").onclick = () => el.remove();
+  el.querySelector("[data-v]").onclick = () => { el.remove(); if (k) avisosIr(k); else avisosAbrir(); };
+  setTimeout(() => el.isConnected && el.remove(), 12000);
+}
+function avisosFechar() { const p = $("#av-pop"); if (p) p.remove(); document.removeEventListener("click", avisosFora, true); }
+function avisosFora(e) { if (!e.target.closest("#av-pop") && !e.target.closest(".sino")) avisosFechar(); }
+function avisosAbrir() {
+  if ($("#av-pop")) return avisosFechar();
+  const ds = demandas(), v = avVistos();
+  const acoes = ds.filter(d => d.acao).sort((a, b) => (a.desde || 0) - (b.desde || 0));
+  const info = ds.filter(d => !d.acao).sort((a, b) => (b.desde || 0) - (a.desde || 0)).slice(0, 8);
+  const item = d => `<button class="av-it ${d.acao ? "" : v.has(d.k) ? "info" : "novo"}" data-act="av-ir" data-k="${esc(d.k)}"><i></i><span><b>${esc(d.t)}</b><small>${esc(d.s || "")}${d.acao && d.desde ? ` · há ${plural(Math.max(0, daysSince(d.desde)), "dia", "dias")}` : ""}</small></span></button>`;
+  const nav = "Notification" in window;
+  const ligado = nav && lsGet("destina_av_nav") && Notification.permission === "granted";
+  const pop = document.createElement("div"); pop.id = "av-pop"; pop.className = "av-pop"; pop.setAttribute("role", "dialog"); pop.setAttribute("aria-label", "Avisos");
+  pop.innerHTML = `<div class="h">${ic("sino")}<b>Avisos</b><span class="sp"></span><span class="small muted">${esc(ROLES[R()] ? ROLES[R()].label : "")}</span></div>
+    ${acoes.length ? `<div class="g">Aguardando você (${acoes.length})</div>${acoes.map(item).join("")}` : `<div class="av-it info" style="cursor:default"><i></i><span><b>Nenhuma demanda para você agora</b><small>Quando um plano, proposta ou empenho precisar da sua ação, ele aparece aqui.</small></span></div>`}
+    ${info.length ? `<div class="g">Novidades</div>${info.map(item).join("")}` : ""}
+    <div class="f">${nav ? (ligado ? `Avisos do navegador ligados. <button class="btn sm ghost" data-act="av-nav">Desligar</button>` : `<button class="btn sm" data-act="av-nav">Avisar também pelo navegador</button>`) : ""}${S.mode === "oficial" ? `<div style="margin-top:6px">Novas demandas também chegam por e-mail, quando o envio estiver configurado.</div>` : ""}</div>`;
+  document.body.appendChild(pop);
+  lsSet(avKey(), [...new Set([...v, ...info.map(d => d.k)])]);
+  setTimeout(() => document.addEventListener("click", avisosFora, true), 0);
+  setTimeout(() => renderShell(), 0);
+}
+function avisosIr(k) {
+  const d = demandas().find(x => x.k === k);
+  avisosFechar();
+  if (!d) return toast("Essa demanda já foi resolvida.");
+  const v = avVistos(); v.add(k); lsSet(avKey(), [...v]);
+  if (d.emp) { location.hash = "empenhos"; setTimeout(() => abrirEmpenho(d.emp), 250); }
+  else location.hash = d.href.slice(1);
+  setTimeout(renderShell, 50);
+}
+async function avisosNavegador() {
+  if (!("Notification" in window)) return;
+  if (lsGet("destina_av_nav") && Notification.permission === "granted") { lsSet("destina_av_nav", false); toast("Avisos do navegador desligados."); avisosFechar(); return; }
+  const r = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
+  if (r === "granted") { lsSet("destina_av_nav", true); toast("Pronto. Novas demandas também aparecem como aviso do navegador."); }
+  else toast("O navegador não permitiu os avisos. Libere nas permissões do site.", true);
+  avisosFechar();
+}
+
 // ---------- confirmação estilo SIPAC: "Deseja realmente …? Sim / Não" ----------
 function perguntar(texto, {ctx = "", sim = "Sim", nao = "Não", perigo = false} = {}) {
   return new Promise(res => {
@@ -5052,6 +5170,9 @@ document.addEventListener("click", async e => {
     case "more": e.preventDefault(); openMore(); break;
     case "persona": closeModal(); enterDemoPersona(id); break;
     case "role": S.role = el.dataset.r; lsSet("destina_role_" + S.me.id, S.role); closeModal(); renderShell(); render(); toast("Atuando como " + ROLES[S.role].label + "."); break;
+    case "avisos": avisosAbrir(); break;
+    case "av-ir": avisosIr(el.dataset.k); break;
+    case "av-nav": avisosNavegador(); break;
     case "theme": applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark"); renderShell(); break;
     case "to-demo": closeModal(); leaveToDemo(); break;
     case "to-oficial": closeModal(); await enterOfficial(); break;
@@ -5142,6 +5263,7 @@ async function userSearch(q) {
 document.addEventListener("keydown", e => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); openCmd(); }
   else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "j") { e.preventDefault(); AS.open ? closeChat() : openChat(); }
+  else if (e.key === "Escape" && $("#av-pop")) avisosFechar();
   else if (e.key === "Escape") { if ($("#modal-root").innerHTML) closeModal(); else if (AS.open) closeChat(); }
   else if (e.key === "Enter" && e.target.matches('[role="button"][data-act]')) e.target.click();
 });
