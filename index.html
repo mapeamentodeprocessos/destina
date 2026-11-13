@@ -2746,6 +2746,7 @@ const DET_LOCAL = {
   async propor({p_dados:d}) {
     if (!canPropor()) throw new Error(`O perfil "${R()}" não pode executar esta ação.`);
     if (!String(d.unidade || "").trim()) throw new Error("Informe a unidade de destino.");
+    if (!String(d.unidadeCode || "").trim()) throw new Error("Informe o código organizacional (SIPAC) da unidade de destino.");
     if (!(d.itens || []).length) throw new Error("Informe ao menos um bem a destinar.");
     const st = computeStock();
     const itens = d.itens.map(x => { const it = S.items[x.material_id]; if (!it) throw new Error("Material não encontrado."); if (!(x.quantidade > 0)) throw new Error(`Quantidade inválida para "${it.descricao}".`); if (x.quantidade > st[it.id].disp) throw new Error(`Só há ${st[it.id].disp} disponíveis de "${it.descricao}".`); return {material_id:it.id, descricao:it.descricao, quantidade:x.quantidade}; });
@@ -2764,6 +2765,7 @@ const DET_LOCAL = {
     let prop = null, d = d0;
     if (d0.proposta_id) { prop = S.determ[d0.proposta_id]; if (!prop || prop.situacao !== "PROPOSTA") throw new Error("Esta proposta não está mais aguardando decisão."); d = {unidade:prop.unidade, unidadeCode:prop.unidadeCode, itens:(d0.itens || prop.itens).map(i => ({material_id:i.material_id, quantidade:i.quantidade})), observacao:prop.observacao, origem:prop.origem}; }
     if (!String(d.unidade || "").trim()) throw new Error("Informe a unidade de destino.");
+    if (!String(d.unidadeCode || "").trim()) throw new Error("Informe o código organizacional (SIPAC) da unidade de destino.");
     if (!(d.itens || []).length) throw new Error("Informe ao menos um bem a destinar.");
     const st = computeStock();
     const itens = d.itens.map(x => { const it = S.items[x.material_id]; if (!it) throw new Error("Material não encontrado."); if (!(x.quantidade > 0)) throw new Error(`Quantidade inválida para "${it.descricao}".`); if (x.quantidade > st[it.id].disp) throw new Error(`Só há ${st[it.id].disp} disponíveis de "${it.descricao}".`); return {material_id:it.id, descricao:it.descricao, quantidade:+x.quantidade}; });
@@ -2797,7 +2799,7 @@ function assinarDecisao(dados, opts = {}) {
     const itens = (dados.itens || []).map(i => ({...i, it:S.items[i.material_id]}));
     const m = openModal({title:opts.titulo || "Assinar a decisão de destinação", sub:"A decisão assinada inicia o plano e já vale como autorização", body:`
       <div class="alert good" style="margin-bottom:12px"><div class="ic">${ic("check")}</div><div><b>Disponibilidade conferida</b><p>${itens.map(i => `${fmtN(i.quantidade)} × ${esc(i.it ? i.it.descricao : i.descricao || "")} · ${fmtN(i.it && st[i.it.id] ? Math.max(0, st[i.it.id].disp) : 0)} disponíveis hoje`).join("<br>")}</p></div></div>
-      <table class="tbl"><tbody><tr><td class="muted">Destino</td><td><b>${esc(dados.unidade)}</b></td></tr>${opts.proposta ? `<tr><td class="muted">Proposta</td><td>${esc(opts.proposta.numero)} · ${esc(nameOf(opts.proposta.propostoPor))} (${esc((ROLES[opts.proposta.propostoPapel] || {}).label || opts.proposta.propostoPapel || "")}), ${fmtD(opts.proposta.propostoEm || opts.proposta.criadoEm)}</td></tr>` : ""}${dados.observacao ? `<tr><td class="muted">Observação</td><td>${esc(dados.observacao)}</td></tr>` : ""}</tbody></table>
+      <table class="tbl"><tbody><tr><td class="muted">Destino</td><td><b>${esc(dados.unidade)}</b>${dados.unidadeCode ? `<br><span class="small muted">Código organizacional ${esc(dados.unidadeCode)}</span>` : ""}</td></tr>${opts.proposta ? `<tr><td class="muted">Proposta</td><td>${esc(opts.proposta.numero)} · ${esc(nameOf(opts.proposta.propostoPor))} (${esc((ROLES[opts.proposta.propostoPapel] || {}).label || opts.proposta.propostoPapel || "")}), ${fmtD(opts.proposta.propostoEm || opts.proposta.criadoEm)}</td></tr>` : ""}${dados.observacao ? `<tr><td class="muted">Observação</td><td>${esc(dados.observacao)}</td></tr>` : ""}</tbody></table>
       <hr><label class="check"><input type="checkbox" id="ad-dec"> <span>Eu, <b>${esc(S.me.name)}</b>${S.me.teste ? " (conta de teste)" : ""}, na qualidade de <b>${esc(sg.cargo || R())}</b>, decido pela destinação acima e autorizo o início do plano.</span></label>`,
       foot:`<button class="btn" data-act="close">Voltar</button><button class="btn primary" id="ad-go" disabled>${ic("autorizacoes")}Assinar e iniciar o plano</button>`});
     let fim = false; const done = v => { if (!fim) { fim = true; resolve(v); } };
@@ -2826,7 +2828,7 @@ function detCard() {
   if (!dec && !prop && !rec.length) return "";
   const itensTxt = d => d.itens.map(i => `${fmtN(i.quantidade)} × ${esc(i.descricao)}`).join("; ");
   const quemProp = d => `${esc(nameOf(d.propostoPor))} · ${esc((ROLES[d.propostoPapel] || {}).label || d.propostoPapel || "")}, ${fmtD(d.propostoEm || d.criadoEm)}`;
-  const blocoDec = dec ? (props.length ? `<div class="list">${props.map(d => `<div class="li" style="grid-template-columns:minmax(0,1fr) auto"><div class="it-t"><b>${esc(d.numero)} · ${esc(d.unidade)}</b><small>${itensTxt(d)}<br>Proposta de ${quemProp(d)}</small></div>
+  const blocoDec = dec ? (props.length ? `<div class="list">${props.map(d => `<div class="li" style="grid-template-columns:minmax(0,1fr) auto"><div class="it-t"><b>${esc(d.numero)} · ${esc(d.unidade)}${d.unidadeCode ? ` <span class="muted small">(${esc(d.unidadeCode)})</span>` : ""}</b><small>${itensTxt(d)}<br>Proposta de ${quemProp(d)}</small></div>
       <div class="row" style="gap:6px"><button class="btn sm primary" data-act="det-assinar" data-id="${d.id}">${ic("autorizacoes")}Assinar decisão</button><button class="btn sm ghost" data-act="det-recusar" data-id="${d.id}">Recusar</button></div></div>`).join("")}</div>`
       : `<div class="card-b"><p class="small muted">Nenhuma proposta aguardando. Para decidir, diga ao assistente, por exemplo: “destinar 30 cadeiras para o CCS”. Ele mostra a disponibilidade e pede a sua assinatura.</p></div>`) : "";
   const blocoProp = prop ? (minhas.length ? `<div class="list">${minhas.map(d => `<div class="li" style="grid-template-columns:minmax(0,1fr) auto"><div class="it-t"><b>${esc(d.numero)} · ${esc(d.unidade)}</b><small>${itensTxt(d)}${d.situacao === "RECUSADA" ? `<br>Não aprovada: ${esc(d.motivoRecusa || "")}` : ""}</small></div>
@@ -2858,7 +2860,7 @@ function formDeterminacao(pre) {
   $("#det-add", m).onclick = () => { rows.push({material_id:"", quantidade:""}); draw(); };
   $("#det-go", m).onclick = async () => {
     const itens = rows.filter(r => r.material_id).map(r => ({material_id:r.material_id, quantidade:Math.round(+String(r.quantidade).replace(",", ".") || 0)}));
-    if (!uni.name) { toast("Escolha a unidade de destino.", true); return; } if (!itens.length) { toast("Escolha ao menos um bem.", true); return; }
+    if (!uni.name) { toast("Escolha a unidade de destino.", true); return; } if (!uni.code) { toast("A unidade de destino precisa do código organizacional (SIPAC). Escolha a unidade na lista da estrutura.", true); return; } if (!itens.length) { toast("Escolha ao menos um bem.", true); return; }
     const dados = {unidade:uni.name, unidadeCode:uni.code || "", itens, observacao:$("#det-obs", m).value.trim(), origem:pre.origem || "tela"};
     const st2 = computeStock(); const falta = itens.find(i => !(i.quantidade > 0) || i.quantidade > Math.max(0, st2[i.material_id].disp));
     if (falta) { toast(falta.quantidade > 0 ? `Só há ${fmtN(Math.max(0, st2[falta.material_id].disp))} disponíveis de ${S.items[falta.material_id].descricao}.` : "Informe a quantidade.", true); return; }
@@ -2873,6 +2875,8 @@ function chatDecisao(q, msg) {
   const n = nl.n || "", E = nl.ents, act = a => { if (actionAllowed(a)) msg.actions.push(a); };
   const NUMW = {UM:1, UMA:1, DOIS:2, DUAS:2, TRES:3, QUATRO:4, CINCO:5, SEIS:6, SETE:7, OITO:8, NOVE:9, DEZ:10, ONZE:11, DOZE:12, QUINZE:15, VINTE:20, TRINTA:30, QUARENTA:40, CINQUENTA:50, CEM:100};
   const cru = normName(q).split(" ");
+  const codOrg = (q.match(/\b\d{2}(?:\.\d{2}){1,6}\b/) || [])[0];
+  if (AS.slot && codOrg) { const u = ORG.by.get(codOrg); const s0 = AS.slot; if (u) E.uni = u; else if (s0.uni && !s0.uni.code) E.uni = {...s0.uni, code:codOrg}; else E.uni = {code:codOrg, name:"Unidade " + codOrg}; delete E.qtd; }
   // continuação de uma determinação incompleta ("para o CCS", "30", "cinco", "Biblioteca Central")
   if (AS.slot && n.split(" ").length <= 12 && !E.uni && !E.qtd && !E.mat) {
     if (!AS.slot.qtd && cru.length <= 3) { const w = cru.find(x => NUMW[x]); if (w) E.qtd = NUMW[w]; }
@@ -2956,13 +2960,14 @@ function chatDeterminarMontar(s, msg) {
   if (!it) { AS.slot = null; const nome = s.mat ? (s.mat.orig || s.mat.txt).toLowerCase() : s.cat ? s.cat.toLowerCase() : "esse bem"; return `**Não há ${esc(nome)} disponível** na reserva técnica no momento. Todo o saldo está comprometido ou zerado; a demanda pode ser registrada para a próxima aquisição.`; }
   const disp = Math.max(0, st[it.id].disp);
   if (!s.qtd) { AS.slot = s; return `**${fmtN(disp)} disponíveis** de ${esc(it.descricao)}.\nQuantos deseja destinar?`; }
-  if (!s.uni) { AS.slot = s; return `**${fmtN(disp)} disponíveis** de ${esc(it.descricao)}.\nPara qual unidade vão os ${fmtN(s.qtd)}? (ex.: “para o CCS” ou “Biblioteca Central”)`; }
+  if (!s.uni) { AS.slot = s; return `**${fmtN(disp)} disponíveis** de ${esc(it.descricao)}.\nPara qual unidade vão os ${fmtN(s.qtd)}? Pode dizer o nome, a sigla ou o código organizacional (ex.: “para o CCS”, “Biblioteca Central” ou “11.00.47”).`; }
+  if (!s.uni.code) { AS.slot = s; return `**${fmtN(disp)} disponíveis** de ${esc(it.descricao)}.\nQual é o **código organizacional (SIPAC)** de ${esc(s.uni.name)}? (ex.: 11.00.47)`; }
   AS.slot = null;
   if (s.qtd > disp) { if (disp > 0) AS.slot = {...s, qtd:null, sugQtd:disp}; }
   if (s.qtd > disp) return `**Só há ${fmtN(disp)} disponíveis** de ${esc(it.descricao)}, e o pedido é de ${fmtN(s.qtd)}.${disp ? ` Quer destinar ${fmtN(disp)}?` : ""}`;
   const dados = {unidade:s.uni.name, unidadeCode:s.uni.code || "", itens:[{material_id:it.id, quantidade:s.qtd}], observacao:"", origem:"chat"};
   const disp1 = `**${fmtN(disp)} disponíveis** de ${esc(it.descricao)} (ficam ${fmtN(disp - s.qtd)} após esta destinação).`;
-  const resumo = `- **${fmtN(s.qtd)} × ${esc(it.descricao)}** para **${esc(s.uni.name)}**`;
+  const resumo = `- **${fmtN(s.qtd)} × ${esc(it.descricao)}** para **${esc(s.uni.name)}** · código organizacional **${esc(s.uni.code)}**`;
   if (canDeterminar()) {
     act({tipo:"determinar", rotulo:"Assinar e iniciar o plano", det:dados});
     act({tipo:"determinar_ajustar", rotulo:"Ajustar antes", det:dados});
@@ -3685,7 +3690,7 @@ function runAction(a) {
       AS.msgs.push({role:"assistant", text:`Decisão assinada. **${esc(r.plano || "")}** iniciado (${esc(r.determinacao || "")}): ${a.det.itens.map(i => `${fmtN(i.quantidade)} × ${esc((S.items[i.material_id] || {}).descricao || "")}`).join("; ")} para **${esc(a.det.unidade)}**. Está em formalização. ${aviso}`, actions:pl ? [{tipo:"abrir_plano", plano_id:pl.id, rotulo:"Acompanhar " + pl.numero}] : [], used:[]}); logAssist({tipo:"resposta", texto:"Decisão assinada pelo chat"}); if (!AS.open) openChat(); drawChat(); });
       break;
     case "propor": proporDestinacao(a.det).then(r => { if (!r) return; renderShell(); render();
-      AS.msgs.push({role:"assistant", text:`Proposta **${esc(r.determinacao)}** enviada para a decisão dos autorizadores: ${a.det.itens.map(i => `${fmtN(i.quantidade)} × ${esc((S.items[i.material_id] || {}).descricao || "")}`).join("; ")} para **${esc(a.det.unidade)}**. O plano começa quando uma delas assinar.${r.demo ? " Na demonstração, o e-mail não é enviado." : ""}`, actions:[], used:[]}); logAssist({tipo:"resposta", texto:"Proposta enviada pelo chat"}); if (!AS.open) openChat(); drawChat(); });
+      AS.msgs.push({role:"assistant", text:`Proposta **${esc(r.determinacao)}** enviada para a decisão dos autorizadores: ${a.det.itens.map(i => `${fmtN(i.quantidade)} × ${esc((S.items[i.material_id] || {}).descricao || "")}`).join("; ")} para **${esc(a.det.unidade)}**${a.det.unidadeCode ? ` (código ${esc(a.det.unidadeCode)})` : ""}. O plano começa quando um deles assinar.${r.demo ? " Na demonstração, o e-mail não é enviado." : ""}`, actions:[], used:[]}); logAssist({tipo:"resposta", texto:"Proposta enviada pelo chat"}); if (!AS.open) openChat(); drawChat(); });
       break;
     case "determinar_ajustar": formDeterminacao({...a.det, unidade:a.det.unidade, unidadeCode:a.det.unidadeCode}); break;
     case "formalizar": go("plano-" + a.plano_id); setTimeout(() => act_formalize(a.plano_id), 120); break;
@@ -3801,6 +3806,8 @@ function nluPeriodo(n) {
   return null;
 }
 function nluUnidade(n, qOrig) {
+  // 0) código organizacional escrito na pergunta ("para 11.00.47")
+  { const cod = (String(qOrig || "").match(/\b\d{2}(?:\.\d{2}){1,6}\b/) || [])[0]; if (cod && ORG.by.get(cod)) return {u:ORG.by.get(cod), txt:cod}; }
   // 1) sigla (CCS, CCEN, STI…): siglas que também são palavras comuns só valem se escritas em maiúsculas
   const AMB = new Set(["PRA","SE","DA","DE","NA","NO","AO","OU","UM","CE","PE","RE","TI","CI","CA"]);
   const up = new Set((qOrig.match(/\b[A-ZÀ-Ú]{2,8}\b/g) || []).map(normName));

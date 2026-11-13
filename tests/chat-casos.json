@@ -768,6 +768,44 @@
      ]
     }
    ]
+  },
+  {
+   "nome": "Destinação mostra o código organizacional da unidade",
+   "persona": "u_pat",
+   "msgs": [
+    {
+     "q": "quero mandar 2 cadeiras para o CCEN",
+     "tem": [
+      "código organizacional",
+      "11.00.41"
+     ],
+     "botao": [
+      "Enviar para o autorizador"
+     ]
+    }
+   ]
+  },
+  {
+   "nome": "Código organizacional como resposta da unidade (não vira quantidade)",
+   "persona": "u_pat",
+   "msgs": [
+    {
+     "q": "quero mandar 2 cadeiras",
+     "tem": [
+      "código organizacional"
+     ]
+    },
+    {
+     "q": "11.00.47",
+     "tem": [
+      "2 × ",
+      "11.00.47"
+     ],
+     "nao": [
+      "11 × "
+     ]
+    }
+   ]
   }
  ]
 }
