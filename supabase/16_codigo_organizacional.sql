@@ -1,7 +1,7 @@
 -- Destina · 16 · toda destinação tem o código organizacional (SIPAC) da unidade de destino
 -- Vale para propostas, decisões e planos (exceto saídas históricas importadas da planilha e rascunhos).
 -- Quando a estrutura organizacional está carregada, o código precisa existir nela, e o nome da unidade
--- passa a ser o nome oficial do código.
+-- passa a ser sempre o nome oficial do código.
 -- Pode ser rodado de novo sem problema.
 
 create or replace function public._exigir_codigo_unidade() returns trigger
@@ -16,7 +16,7 @@ begin
   if exists (select 1 from public.unidades) then
     select name into v_nome from public.unidades where code = trim(new.unidade_code);
     if v_nome is null then raise exception 'O código organizacional % não existe na estrutura da instituição.', new.unidade_code; end if;
-    if coalesce(trim(new.unidade), '') = '' then new.unidade := v_nome; end if;
+    new.unidade := v_nome; -- sempre o nome oficial do código
   end if;
   new.unidade_code := trim(new.unidade_code);
   return new;

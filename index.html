@@ -2763,7 +2763,13 @@ const DET_LOCAL = {
   async registrar({p_dados:d0}) {
     if (!canDeterminar()) throw new Error(`O perfil "${R()}" não pode executar esta ação.`);
     let prop = null, d = d0;
-    if (d0.proposta_id) { prop = S.determ[d0.proposta_id]; if (!prop || prop.situacao !== "PROPOSTA") throw new Error("Esta proposta não está mais aguardando decisão."); d = {unidade:prop.unidade, unidadeCode:prop.unidadeCode, itens:(d0.itens || prop.itens).map(i => ({material_id:i.material_id, quantidade:i.quantidade})), observacao:prop.observacao, origem:prop.origem}; }
+    let alterou = "";
+    if (d0.proposta_id) { prop = S.determ[d0.proposta_id]; if (!prop || prop.situacao !== "PROPOSTA") throw new Error("Esta proposta não está mais aguardando decisão.");
+      d = {unidade:d0.unidade || prop.unidade, unidadeCode:d0.unidadeCode || prop.unidadeCode, itens:(d0.itens || prop.itens).map(i => ({material_id:i.material_id, quantidade:i.quantidade})), observacao:d0.observacao != null ? d0.observacao : prop.observacao, origem:prop.origem};
+      if (d0.alterada) { const pts = []; if ((d.unidadeCode || "") !== (prop.unidadeCode || "")) pts.push(`destino ${prop.unidade} → ${d.unidade}`);
+        const a = {}, b = {}; prop.itens.forEach(i => a[i.material_id] = (a[i.material_id] || 0) + i.quantidade); d.itens.forEach(i => b[i.material_id] = (b[i.material_id] || 0) + i.quantidade);
+        Object.keys({...a, ...b}).forEach(k => { if (a[k] !== b[k]) pts.push(`${(S.items[k] || {}).descricao || "bem"} ${a[k] || 0} → ${b[k] || 0}`); });
+        alterou = pts.join("; "); prop.propostaOriginal = {unidade:prop.unidade, unidadeCode:prop.unidadeCode, itens:prop.itens}; prop.unidade = d.unidade; prop.unidadeCode = d.unidadeCode; prop.observacao = d.observacao; } }
     if (!String(d.unidade || "").trim()) throw new Error("Informe a unidade de destino.");
     if (!String(d.unidadeCode || "").trim()) throw new Error("Informe o código organizacional (SIPAC) da unidade de destino.");
     if (!(d.itens || []).length) throw new Error("Informe ao menos um bem a destinar.");
@@ -2782,6 +2788,7 @@ const DET_LOCAL = {
       itens:itens.map(i => { const it = S.items[i.material_id]; return {itemId:it.id, codigo:it.codigo, descricao:it.descricao, qtd:i.quantidade, vu:it.valorUnitario}; })};
     setStatus(p, "RASCUNHO");
     if (prop) await addEvent(p, "proposta", `Destinação proposta por ${nameOf(prop.propostoPor)} (${det.numero})`, {by:prop.propostoPor, role:prop.propostoPapel, at:prop.propostoEm});
+    if (alterou) await addEvent(p, "alteracao", `Proposta alterada pelo autorizador antes de assinar: ${alterou}`);
     await addEvent(p, "assinatura", `Decisão assinada eletronicamente — ${cargo} (${det.numero}). Plano iniciado${det.origem === "chat" ? " pelo assistente" : ""}`);
     setStatus(p, "INSTRUCAO"); await addEvent(p, "envio", "Enviado para instrução documental (Formalização)");
     S.plans[p.id] = p; det.situacao = "ATENDIDA"; det.planoId = p.id;
@@ -2797,7 +2804,15 @@ function assinarDecisao(dados, opts = {}) {
   return new Promise(resolve => {
     const sg = S.cfg.signatarios[R()] || {}; const st = computeStock();
     const itens = (dados.itens || []).map(i => ({...i, it:S.items[i.material_id]}));
-    const m = openModal({title:opts.titulo || "Assinar a decisão de destinação", sub:"A decisão assinada inicia o plano e já vale como autorização", body:`
+    const P = opts.proposta; const mudou = [];
+    if (P && opts.alterada) {
+      if ((P.unidadeCode || "") !== (dados.unidadeCode || "")) mudou.push(`Destino: ${esc(P.unidade)} → <b>${esc(dados.unidade)}</b>`);
+      const a = {}, b = {}; P.itens.forEach(i => a[i.material_id] = (a[i.material_id] || 0) + i.quantidade); dados.itens.forEach(i => b[i.material_id] = (b[i.material_id] || 0) + i.quantidade);
+      Object.keys({...a, ...b}).forEach(k => { if (a[k] !== b[k]) mudou.push(`${esc((S.items[k] || {}).descricao || "bem")}: ${fmtN(a[k] || 0)} → <b>${fmtN(b[k] || 0)}</b>`); });
+      if ((P.observacao || "") !== (dados.observacao || "")) mudou.push("Observação alterada");
+    }
+    const m = openModal({title:opts.titulo || (mudou.length ? "Assinar a decisão com alterações" : "Assinar a decisão de destinação"), sub:"A decisão assinada inicia o plano e já vale como autorização", body:`
+      ${mudou.length ? `<div class="alert warning" style="margin-bottom:12px"><div class="ic">${ic("alert")}</div><div><b>Alterações em relação à proposta ${esc(P.numero)}</b><p>${mudou.join("<br>")}</p></div></div>` : ""}
       <div class="alert good" style="margin-bottom:12px"><div class="ic">${ic("check")}</div><div><b>Disponibilidade conferida</b><p>${itens.map(i => `${fmtN(i.quantidade)} × ${esc(i.it ? i.it.descricao : i.descricao || "")} · ${fmtN(i.it && st[i.it.id] ? Math.max(0, st[i.it.id].disp) : 0)} disponíveis hoje`).join("<br>")}</p></div></div>
       <table class="tbl"><tbody><tr><td class="muted">Destino</td><td><b>${esc(dados.unidade)}</b>${dados.unidadeCode ? `<br><span class="small muted">Código organizacional ${esc(dados.unidadeCode)}</span>` : ""}</td></tr>${opts.proposta ? `<tr><td class="muted">Proposta</td><td>${esc(opts.proposta.numero)} · ${esc(nameOf(opts.proposta.propostoPor))} (${esc((ROLES[opts.proposta.propostoPapel] || {}).label || opts.proposta.propostoPapel || "")}), ${fmtD(opts.proposta.propostoEm || opts.proposta.criadoEm)}</td></tr>` : ""}${dados.observacao ? `<tr><td class="muted">Observação</td><td>${esc(dados.observacao)}</td></tr>` : ""}</tbody></table>
       <hr><label class="check"><input type="checkbox" id="ad-dec"> <span>Eu, <b>${esc(S.me.name)}</b>${S.me.teste ? " (conta de teste)" : ""}, na qualidade de <b>${esc(sg.cargo || R())}</b>, decido pela destinação acima e autorizo o início do plano.</span></label>`,
@@ -2809,7 +2824,7 @@ function assinarDecisao(dados, opts = {}) {
     $("#ad-go", m).onclick = async () => {
       $("#ad-go", m).disabled = true; fim = true; ob.disconnect();
       if (S.mode === "oficial" && !await confirmarIdentidade(R(), "decisão de destinação")) { resolve(false); return; }
-      const r = await detDo("registrar", {p_dados:opts.proposta ? {proposta_id:opts.proposta.id} : dados}, null);
+      const r = await detDo("registrar", {p_dados:opts.proposta ? (mudou.length ? {...dados, proposta_id:opts.proposta.id, alterada:true} : {proposta_id:opts.proposta.id}) : dados}, null);
       if (r) { closeModal(); toast(`Decisão assinada. ${r.plano || "Plano"} iniciado e enviado à Formalização${r.notificados ? ` (${plural(r.notificados, "aviso", "avisos")} por e-mail)` : ""}.`); }
       resolve(r || false);
     };
@@ -2829,7 +2844,7 @@ function detCard() {
   const itensTxt = d => d.itens.map(i => `${fmtN(i.quantidade)} × ${esc(i.descricao)}`).join("; ");
   const quemProp = d => `${esc(nameOf(d.propostoPor))} · ${esc((ROLES[d.propostoPapel] || {}).label || d.propostoPapel || "")}, ${fmtD(d.propostoEm || d.criadoEm)}`;
   const blocoDec = dec ? (props.length ? `<div class="list">${props.map(d => `<div class="li" style="grid-template-columns:minmax(0,1fr) auto"><div class="it-t"><b>${esc(d.numero)} · ${esc(d.unidade)}${d.unidadeCode ? ` <span class="muted small">(${esc(d.unidadeCode)})</span>` : ""}</b><small>${itensTxt(d)}<br>Proposta de ${quemProp(d)}</small></div>
-      <div class="row" style="gap:6px"><button class="btn sm primary" data-act="det-assinar" data-id="${d.id}">${ic("autorizacoes")}Assinar decisão</button><button class="btn sm ghost" data-act="det-recusar" data-id="${d.id}">Recusar</button></div></div>`).join("")}</div>`
+      <div class="row" style="gap:6px"><button class="btn sm primary" data-act="det-assinar" data-id="${d.id}">${ic("autorizacoes")}Assinar decisão</button><button class="btn sm" data-act="det-alterar" data-id="${d.id}">Alterar</button><button class="btn sm ghost" data-act="det-recusar" data-id="${d.id}">Recusar</button></div></div>`).join("")}</div>`
       : `<div class="card-b"><p class="small muted">Nenhuma proposta aguardando. Para decidir, diga ao assistente, por exemplo: “destinar 30 cadeiras para o CCS”. Ele mostra a disponibilidade e pede a sua assinatura.</p></div>`) : "";
   const blocoProp = prop ? (minhas.length ? `<div class="list">${minhas.map(d => `<div class="li" style="grid-template-columns:minmax(0,1fr) auto"><div class="it-t"><b>${esc(d.numero)} · ${esc(d.unidade)}</b><small>${itensTxt(d)}${d.situacao === "RECUSADA" ? `<br>Não aprovada: ${esc(d.motivoRecusa || "")}` : ""}</small></div>
       <div class="row" style="gap:6px">${d.situacao === "PROPOSTA" ? `<span class="pill">Aguardando decisão</span><button class="btn sm ghost" data-act="det-retirar" data-id="${d.id}">Retirar</button>` : `<span class="pill" style="color:var(--crit-ink);background:var(--crit-soft)">Não aprovada</span>`}</div></div>`).join("")}</div>`
@@ -2846,8 +2861,8 @@ function formDeterminacao(pre) {
   pre = pre || {}; let uni = {code:pre.unidadeCode || "", name:pre.unidade || ""};
   const st = computeStock(); const mats = Object.values(S.items).filter(i => st[i.id].disp > 0).sort((a, b) => a.descricao.localeCompare(b.descricao, "pt-BR"));
   let rows = (pre.itens && pre.itens.length ? pre.itens : [{material_id:"", quantidade:""}]).map(x => ({...x}));
-  const dec = canDeterminar();
-  const m = openModal({title:dec ? "Decidir destinação" : "Propor destinação", sub:dec ? "Você assina a decisão; o plano é iniciado e a Formalização é avisada" : "A proposta vai para os autorizadores; o plano só começa depois da assinatura", body:`
+  const dec = canDeterminar(); const prop = pre.proposta || null;
+  const m = openModal({title:prop ? `Alterar a proposta ${esc(prop.numero)}` : dec ? "Decidir destinação" : "Propor destinação", sub:prop ? `Proposta de ${esc(nameOf(prop.propostoPor))}. Ajuste a unidade, os bens ou as quantidades e assine; a alteração fica registrada.` : dec ? "Você assina a decisão; o plano é iniciado e a Formalização é avisada" : "A proposta vai para os autorizadores; o plano só começa depois da assinatura", body:`
     <div class="field"><label>Unidade de destino</label><div id="upk-det"></div></div>
     <div id="det-rows" style="margin-top:10px"></div><button class="btn sm" id="det-add" style="margin-top:6px">${ic("plus")}Outro bem</button>
     <div class="field" style="margin-top:12px"><label>Observação <span class="muted">(opcional)</span></label><input class="inp" id="det-obs" value="${esc(pre.observacao || "")}" placeholder="Ex.: atender a nova sala de aula do bloco B"></div>`,
@@ -2864,7 +2879,7 @@ function formDeterminacao(pre) {
     const dados = {unidade:uni.name, unidadeCode:uni.code || "", itens, observacao:$("#det-obs", m).value.trim(), origem:pre.origem || "tela"};
     const st2 = computeStock(); const falta = itens.find(i => !(i.quantidade > 0) || i.quantidade > Math.max(0, st2[i.material_id].disp));
     if (falta) { toast(falta.quantidade > 0 ? `Só há ${fmtN(Math.max(0, st2[falta.material_id].disp))} disponíveis de ${S.items[falta.material_id].descricao}.` : "Informe a quantidade.", true); return; }
-    if (dec) { closeModal(); const r = await assinarDecisao(dados); if (r && r.plano_id) location.hash = "plano-" + r.plano_id; }
+    if (dec) { closeModal(); const r = await assinarDecisao(dados, prop ? {proposta:prop, alterada:true} : {}); if (r && r.plano_id) location.hash = "plano-" + r.plano_id; }
     else { const r = await proporDestinacao(dados); if (r) closeModal(); }
   };
 }
@@ -5008,6 +5023,7 @@ document.addEventListener("click", async e => {
     case "layout-conversa": setLayout("conversa"); break;
     case "det-nova": formDeterminacao(); break;
     case "det-assinar": { const d = S.determ[id]; if (d) assinarDecisao({unidade:d.unidade, unidadeCode:d.unidadeCode, itens:d.itens, observacao:d.observacao}, {proposta:d}).then(r => { if (r && r.plano_id) location.hash = "plano-" + r.plano_id; }); break; }
+    case "det-alterar": { const d = S.determ[id]; if (d) formDeterminacao({proposta:d, unidade:d.unidade, unidadeCode:d.unidadeCode, itens:d.itens.map(i => ({material_id:i.material_id, quantidade:i.quantidade})), observacao:d.observacao, origem:d.origem}); break; }
     case "det-recusar": case "det-retirar": { const d = S.determ[id]; const rec = a === "det-recusar"; const m = openModal({title:(rec ? "Recusar a proposta " : "Retirar a proposta ") + esc(d.numero) + "?", body:`<div class="field"><label>Motivo${rec ? "" : ' <span class="muted">(opcional)</span>'}</label><input class="inp" id="rp-m"></div>`, foot:`<button class="btn" data-act="close">Voltar</button><button class="btn danger" id="rp-go">${rec ? "Recusar" : "Retirar"}</button>`});
       $("#rp-go", m).onclick = async () => { const r = await detDo("recusar", {p_id:id, p_motivo:$("#rp-m", m).value.trim()}, rec ? "Proposta recusada. Quem propôs foi avisado." : "Proposta retirada."); if (r) closeModal(); }; break; }
     case "det-plano": detMontarPlano(id); break;
