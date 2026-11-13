@@ -1296,7 +1296,7 @@ function scheduleRender() { if (rq) return; rq = requestAnimationFrame(() => { r
 const NAV = [
   {k:"painel", l:"Painel", roles:null},
   {k:"reserva", l:"Reserva técnica", roles:null},
-  {k:"catalogo", l:"Catálogo de fotos", roles:null},
+  {k:"catalogo", l:"Catálogo", roles:null},
   {k:"empenhos", l:"Empenhos e tombamento", roles:null},
   {k:"planos", l:"Planos de destinação", roles:null},
   {k:"acompanhar", l:"Acompanhar destinações", roles:null},
@@ -3317,7 +3317,7 @@ function vCatalogo() {
   const L = catItens(); const todos = Object.values(S.items); const comFoto = todos.filter(i => i.foto).length;
   const cats = CATS.filter(c => todos.some(i => i.categoria === c));
   const pode = canDeterminar() || canPropor() || can.createPlan();
-  return `<div class="page-h"><div><h1>Catálogo de fotos</h1><p>Os bens da reserva técnica com foto e saldo disponível, para escolher o que destinar. ${comFoto} de ${plural(todos.length, "material tem", "materiais têm")} foto; os demais aparecem com uma representação ilustrativa.</p></div>
+  return `<div class="page-h"><div><h1>Catálogo</h1><p>Os bens da reserva técnica com foto e saldo disponível, para escolher o que destinar. ${comFoto} de ${plural(todos.length, "material tem", "materiais têm")} foto; os demais aparecem com uma representação ilustrativa.</p></div>
     <div class="r"><button class="btn" data-act="cat-imprimir">${ic("documentos")}Imprimir ou salvar em PDF</button></div></div>
   <div class="toolbar"><input class="inp q" type="search" placeholder="Buscar no catálogo…" value="${esc(u.catQ || "")}" data-ui="catQ" aria-label="Buscar no catálogo">
     <select class="inp" data-ui="catCat" aria-label="Categoria" style="max-width:220px"><option value="">Todas as categorias</option>${cats.map(c => `<option ${u.catCat === c ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>
@@ -3772,7 +3772,7 @@ async function persistOrg(rows, meta) {
 // ASSISTENTE DESTINA — perguntas em linguagem natural, ações por clique, log
 // =====================================================================
 const AS = {open:false, turns:[], msgs:[], busy:false, ctl:null, status:"", sample:null, tools:false, myLog:null};
-const TELAS = {painel:"Painel", reserva:"Reserva técnica", catalogo:"Catálogo de fotos", empenhos:"Empenhos e tombamento", planos:"Planos de destinação", acompanhar:"Acompanhar destinações", autorizacoes:"Autorizações", entregas:"Separação e entrega", monitoramento:"Monitoramento", documentos:"Documentos e autenticidade", configuracoes:"Configurações"};
+const TELAS = {painel:"Painel", reserva:"Reserva técnica", catalogo:"Catálogo", empenhos:"Empenhos e tombamento", planos:"Planos de destinação", acompanhar:"Acompanhar destinações", autorizacoes:"Autorizações", entregas:"Separação e entrega", monitoramento:"Monitoramento", documentos:"Documentos e autenticidade", configuracoes:"Configurações"};
 const SYN = {GELADEIRA:"REFRIGERADOR", GELADEIRAS:"REFRIGERADOR", "MICRO-ONDAS":"MICROONDAS", SPLIT:"HI-WALL", BEBEDOUROS:"BEBEDOURO", PC:"COMPUTADOR", PCS:"COMPUTADOR", CPU:"COMPUTADOR", CPUS:"COMPUTADOR", DESKTOP:"COMPUTADOR", DESKTOPS:"COMPUTADOR", NOTE:"NOTEBOOK", NOTES:"NOTEBOOK", LAPTOP:"NOTEBOOK", LAPTOPS:"NOTEBOOK", "AR-CONDICIONADO":"AR CONDICIONADO", ARES:"AR"};
 // nomes populares ↔ nomes do catálogo: cada linha é um grupo de equivalentes (a busca tenta todos)
 const APELIDOS = [
