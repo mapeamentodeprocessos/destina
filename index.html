@@ -2098,7 +2098,7 @@ function vPlano() {
       </tbody></table></div></section>
     </div>
     <div class="c-4" style="display:flex;flex-direction:column;gap:16px">
-      ${p.legado ? "" : `<section class="card"><div class="card-h"><h3>Assinaturas</h3><span class="sub">alçada ${req.length > 1 ? "dupla" : "simples"}</span></div><div class="card-b" style="padding-top:10px">${sigBlocks}</div></section>`}
+      ${p.legado ? "" : `<section class="card"><div class="card-h"><h3>Assinaturas</h3><span class="sub">${minOf(p) > 1 ? "os dois autorizadores assinam" : "qualquer um dos autorizadores assina"}</span></div><div class="card-b" style="padding-top:10px">${sigBlocks}</div></section>`}
       <section class="card"><div class="card-h"><h3>Documentos</h3></div><div class="card-b" style="padding-top:10px;display:flex;flex-direction:column;gap:8px">
         ${p.legado ? '<p class="small muted">Registros históricos não geram termos no Destina.</p>' : p.processo ? `<button class="btn" data-act="doc" data-doc="aut" data-id="${p.id}" style="justify-content:flex-start">${ic("planos")}Termo de autorização de destinação</button>` : '<p class="small muted">O termo de autorização é gerado na formalização.</p>'}
         ${p.status === "ENTREGUE" && !p.legado ? `<button class="btn" data-act="doc" data-doc="ent" data-id="${p.id}" style="justify-content:flex-start">${ic("entregas")}Guia de entrega e termo de responsabilidade</button>` : ""}
@@ -2135,10 +2135,14 @@ function act_return(id) {
 function act_formalize(id) {
   const p0 = S.plans[id]; const tot = planTotal(p0); const req = requiredSigners(tot);
   const m = openModal({wide:true, title:"Formalizar " + esc(p0.numero), body:`
-    <p class="ink2" style="margin-bottom:14px">Complete a instrução. Ao submeter, o sistema gera o termo de autorização, calcula o hash do conteúdo e o envia à alçada competente.</p>
+    <p class="ink2" style="margin-bottom:14px">Complete a instrução. Ao submeter, o sistema gera o termo de autorização, calcula o hash do conteúdo e o envia aos autorizadores.</p>
     <div class="form-grid">
       <div class="field"><label>Número do processo no SIPAC</label><input class="inp" id="proc" value="${esc(p0.processo || "")}" placeholder="23074.000000/2026-00" required></div>
-      <div class="field"><label>Alçada calculada</label><input class="inp" disabled value="${esc(req.map(r => S.cfg.signatarios[r].cargo).join(" + "))} · ${BRL.format(tot)}"></div>
+      ${(() => { const dd = detList().find(x => x.planoId === id && x.assinatura && ["PRA","REITORIA"].includes(x.papel)); const dois = minAssin(tot) > 1;
+        const quem = dd ? `Já autorizado pela decisão de ${(dd.assinatura.nome || S.cfg.signatarios[dd.papel].nome)} (${dd.assinatura.cargo || S.cfg.signatarios[dd.papel].cargo})` : req.map(r => S.cfg.signatarios[r].cargo).join(dois ? " e " : " ou ");
+        const semValor = p0.itens.some(li => !(+li.vu > 0));
+        return `<div class="field"><label>Quem autoriza</label><input class="inp" disabled value="${esc(quem)}"></div>
+      <div class="field"><label>Valor do plano</label><input class="inp" disabled value="${esc(BRL.format(tot))}${semValor ? " (há bens sem valor unitário na planilha)" : ""}"></div>`; })()}
       ${(() => { const d = detList().find(x => x.planoId === id && x.assinatura && ["PRA","REITORIA"].includes(x.papel)); return d ? `<div class="field full"><div class="alert good"><div class="ic">${ic("check")}</div><div><b>Decisão assinada por ${esc(d.assinatura.cargo || d.papel)} (${esc(d.numero)})</b><p>Ela já vale como autorização: ao concluir, o plano segue direto para a separação${minAssin(tot) > 1 ? ", depois da assinatura do outro autorizador, que a configuração exige para este valor" : ""}. Se você mudar os bens ou as quantidades decididos, o termo volta para assinatura.</p></div></div></div>` : ""; })()}
       <div class="field full"><label>Fundamentação</label><textarea class="inp" id="fund">${esc(p0.fundamentacao || S.cfg.fundamentacao)}</textarea></div>
       <div class="field full"><label>Despacho de encaminhamento</label><textarea class="inp" id="desp">${esc(p0.despacho || `Encaminho à autoridade competente para autorização da destinação de ${plural(planQtd(p0), "bem", "bens")} da reserva técnica à unidade ${p0.unidade}, no valor total de ${BRL.format(tot)}, conforme justificativa apresentada.`)}</textarea></div>
@@ -3186,7 +3190,7 @@ async function openDoc(id, kind) {
 // ---------- CONFIGURAÇÕES ----------
 function vConfig() {
   const c = S.cfg;
-  return `<div class="page-h"><div><h1>Configurações</h1><p>Parâmetros da instituição, alçadas de assinatura, prazos e perfis de acesso.</p></div><div class="r"><button class="btn primary" data-act="save-cfg">Salvar configurações</button></div></div>
+  return `<div class="page-h"><div><h1>Configurações</h1><p>Parâmetros da instituição, autorizadores, prazos e perfis de acesso.</p></div><div class="r"><button class="btn primary" data-act="save-cfg">Salvar configurações</button></div></div>
   <form id="f-cfg" class="grid g-12" autocomplete="off">
     <section class="card c-6"><div class="card-h"><h3>Instituição</h3></div><div class="card-b form-grid">
       <div class="field full"><label>Nome da instituição</label><input class="inp" name="instituicao" value="${esc(c.instituicao)}"></div>
@@ -3194,7 +3198,7 @@ function vConfig() {
       <div class="field"><label>Setor emissor dos documentos</label><input class="inp" name="orgao" value="${esc(c.orgao)}"></div>
       <div class="field full"><label>Fundamentação padrão dos termos</label><textarea class="inp" name="fundamentacao">${esc(c.fundamentacao)}</textarea></div>
     </div></section>
-    <section class="card c-6"><div class="card-h"><h3>Autoridades signatárias e alçada</h3></div><div class="card-b form-grid">
+    <section class="card c-6"><div class="card-h"><h3>Autorizadores</h3></div><div class="card-b form-grid">
       <div class="field"><label>Autorizador — nome</label><input class="inp" name="praNome" value="${esc(c.signatarios.PRA.nome)}"></div>
       <div class="field"><label>Cargo</label><input class="inp" name="praCargo" value="${esc(c.signatarios.PRA.cargo)}"></div>
       <div class="field"><label>Autorizador — nome</label><input class="inp" name="reiNome" value="${esc(c.signatarios.REITORIA.nome)}"></div>
