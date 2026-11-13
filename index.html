@@ -1110,7 +1110,7 @@ async function sbCarregarMe() {
 async function sbLoad(force) {
   const q = SB.all.bind(SB);
   const [cfg, perfis, mats, lotes, planos, itens, etapas, evs, sigs, ents, tombs, logs, meta] = await Promise.all([
-    SB.req("config?id=eq.1&select=dados,atualizado_em"), q("perfis", "select=id,nome,email,papeis,aprovado,criado_em&order=criado_em"), q("materiais", "select=*&order=criado_em"), q("lotes", "select=*&order=data"),
+    SB.req("config?id=eq.1&select=dados,atualizado_em"), q("perfis", "select=*&order=criado_em"), q("materiais", "select=*&order=criado_em"), q("lotes", "select=*&order=data"),
     q("planos", "select=*&order=criado_em"), q("plano_itens", "select=*"), q("plano_etapas", "select=plano_id,status,em&order=id"), q("eventos", "select=*&order=id"),
     q("assinaturas", "select=*"), q("entregas", "select=*"), q("tombamentos", "select=*"), SB.req("log_assistente?select=*&order=em.desc&limit=300"), SB.req("estrutura_meta?select=*")]);
   const dets = await q("determinacoes", "select=*&order=criado_em").catch(() => []);
