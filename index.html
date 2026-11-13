@@ -1951,22 +1951,30 @@ function ordCard(p) {
     <div class="ord-f"><span class="num">${esc(p.numero)} · ${BRL.format(planTotal(p))}</span><span style="font-weight:600;color:${cor}">${esc(pe)}</span></div></a>`;
 }
 function vAcompanhar() {
-  const u = S.ui; u.acSt = u.acSt || "ativos"; u.acQ = u.acQ || "";
+  const u = S.ui; u.acQ = u.acQ || "";
   let ps = Object.values(S.plans).filter(p => !p.legado);
   const q = normName(u.acQ.trim());
   if (q) ps = ps.filter(p => normName([p.numero, p.unidade, p.unidadeCode, p.finalidade, p.itens.map(i => i.descricao).join(" ")].join(" ")).includes(q));
   const grupos = {ativos:p => STAGES.includes(p.status) && p.status !== "ENTREGUE", entregues:p => p.status === "ENTREGUE", encerrados:p => ["INDEFERIDO","CANCELADO"].includes(p.status), todos:() => true};
   const cont = Object.fromEntries(Object.entries(grupos).map(([k, f]) => [k, ps.filter(f).length]));
+  if (!u.acSt) u.acSt = cont.ativos ? "ativos" : "todos";
   ps = ps.filter(grupos[u.acSt]).sort((a, b) => (b.etapas && b.etapas.length ? b.etapas[b.etapas.length - 1].at : b.criadoEm) - (a.etapas && a.etapas.length ? a.etapas[a.etapas.length - 1].at : a.criadoEm));
   const tabs = [["ativos","A caminho"],["entregues","Entregues"],["encerrados","Não autorizados e cancelados"],["todos","Todos"]];
   return `<div class="page-h"><div><h1>Acompanhar destinações</h1><p>Veja em que etapa está cada destinação e quando os bens devem chegar à unidade.</p></div></div>
   <div class="toolbar"><input class="inp q" type="search" placeholder="Buscar por unidade, número do plano ou bem…" value="${esc(u.acQ)}" data-ui="acQ" aria-label="Buscar destinações">
     <div class="seg" role="group" aria-label="Situação">${tabs.map(([k, l]) => `<button aria-pressed="${u.acSt === k}" data-act="acst" data-k="${k}">${l} <span class="muted">${cont[k]}</span></button>`).join("")}</div></div>
-  ${ps.length ? `<div class="ord-list">${ps.map(ordCard).join("")}</div>` : `<div class="empty card"><b>Nada por aqui</b>${u.acSt === "ativos" ? "Nenhuma destinação em andamento no momento." : "Nenhuma destinação nesta situação."}</div>`}`;
+  ${ps.length ? `<div class="ord-list">${ps.map(ordCard).join("")}</div>` : `<div class="empty card"><b>Nada por aqui</b>${u.acSt === "ativos" ? "Nenhuma destinação em andamento no momento." : "Nenhuma destinação nesta situação."}${vazioAtalhos(tabs.map(([k, l]) => [k, l, cont[k]]), u.acSt, "acst")}</div>`}`;
+}
+function vazioAtalhos(abas, atual, act) {
+  const outras = abas.filter(([k, , n]) => k !== atual && k !== "todos" && n > 0);
+  return outras.length ? `<div class="row" style="justify-content:center;gap:8px;margin-top:12px;flex-wrap:wrap">${outras.map(([k, l, n]) => `<button class="btn sm" data-act="${act}" data-k="${k}">Ver ${esc(l.toLowerCase())} (${n})</button>`).join("")}</div>` : "";
 }
 function vPlanos() {
   const u = S.ui; const detHtml = detCard();
   let plans = Object.values(S.plans);
+  const PF = {ativos:p => STAGES.includes(p.status) && p.status !== "ENTREGUE", concluidos:p => p.status === "ENTREGUE" && !p.legado, historico:p => p.legado, encerrados:p => ["INDEFERIDO","CANCELADO"].includes(p.status), todos:() => true};
+  const pcont = Object.fromEntries(Object.entries(PF).map(([k, f]) => [k, plans.filter(f).length]));
+  if (!u.planStManual && u.planSt === "ativos" && !pcont.ativos) u.planSt = pcont.concluidos ? "concluidos" : "todos";
   const q = u.planQ.trim().toLowerCase();
   if (q) plans = plans.filter(p => [p.numero, planUnitText(p), p.unidadeCode, p.finalidade, p.processo, p.justificativa].join(" ").toLowerCase().includes(q) || normName([p.numero, planUnitText(p), p.finalidade].join(" ")).includes(normName(q)));
   if (u.planSt === "ativos") plans = plans.filter(p => STAGES.includes(p.status) && p.status !== "ENTREGUE");
@@ -1981,8 +1989,8 @@ function vPlanos() {
     <div class="r"><div class="seg" role="group" aria-label="Visualização"><button aria-pressed="${u.planView === "lista"}" data-act="pview" data-k="lista">Lista</button><button aria-pressed="${u.planView === "quadro"}" data-act="pview" data-k="quadro">Quadro</button></div>${canDeterminar() || canPropor() ? `<button class="btn primary" data-act="new-plan">${ic("plus")}${canDeterminar() ? "Decidir destinação" : "Propor destinação"}</button>` : ""}</div></div>
   ${detHtml}
   <div class="toolbar"><input class="inp q" type="search" placeholder="Buscar por número, unidade, processo ou finalidade…" value="${esc(u.planQ)}" data-ui="planQ" aria-label="Buscar planos">
-    <div class="seg" role="group" aria-label="Situação">${extra}${filt.map(([k, l]) => `<button aria-pressed="${u.planSt === k}" data-act="pst" data-k="${k}">${l}</button>`).join("")}</div></div>
-  ${u.planView === "quadro" ? planKanban(plans) : `<div class="card"><div class="list">${plans.map(planRow).join("") || `<div class="empty"><b>Nenhum plano aqui</b>${canDeterminar() || canPropor() ? 'O plano começa com a decisão assinada de um autorizador.<br><button class="btn primary" data-act="new-plan">' + (canDeterminar() ? "Decidir destinação" : "Propor destinação") + '</button>' : "Quando houver planos nesta situação, eles aparecem aqui."}</div>`}</div></div>`}`;
+    <div class="seg" role="group" aria-label="Situação">${extra}${filt.map(([k, l]) => `<button aria-pressed="${u.planSt === k}" data-act="pst" data-k="${k}">${l} <span class="muted">${pcont[k]}</span></button>`).join("")}</div></div>
+  ${u.planView === "quadro" ? planKanban(plans) : `<div class="card"><div class="list">${plans.map(planRow).join("") || `<div class="empty"><b>Nenhum plano aqui</b>${canDeterminar() || canPropor() ? 'O plano começa com a decisão assinada de um autorizador.<br><button class="btn primary" data-act="new-plan">' + (canDeterminar() ? "Decidir destinação" : "Propor destinação") + '</button>' : "Quando houver planos nesta situação, eles aparecem aqui."}${vazioAtalhos(filt.map(([k, l]) => [k, l, pcont[k]]), u.planSt, "pst")}</div>`}</div></div>`}`;
 }
 function planRow(p) {
   const late = isLate(p);
@@ -2853,19 +2861,20 @@ async function proporDestinacao(dados) {
 function detCard() {
   const dec = canDeterminar(), prop = canPropor();
   const props = detPropostas();
-  const minhas = detList().filter(d => d.propostoPor === S.me.id && ["PROPOSTA","RECUSADA"].includes(d.situacao)).slice(0, 6);
+  const minhas = detList().filter(d => d.situacao === "PROPOSTA" || (d.propostoPor === S.me.id && d.situacao === "RECUSADA")).slice(0, 8);
+  const verProps = prop || (!dec && minhas.length > 0);
   const rec = detList().filter(d => d.situacao === "ATENDIDA" && d.planoId && S.plans[d.planoId] && ["INSTRUCAO","RASCUNHO"].includes(S.plans[d.planoId].status));
-  if (!dec && !prop && !rec.length) return "";
+  if (!dec && !prop && !rec.length && !minhas.length) return "";
   const itensTxt = d => d.itens.map(i => `${fmtN(i.quantidade)} × ${esc(i.descricao)}`).join("; ");
   const quemProp = d => `${esc(nameOf(d.propostoPor))} · ${esc((ROLES[d.propostoPapel] || {}).label || d.propostoPapel || "")}, ${fmtD(d.propostoEm || d.criadoEm)}`;
   const blocoDec = dec ? (props.length ? `<div class="list">${props.map(d => `<div class="li" style="grid-template-columns:minmax(0,1fr) auto"><div class="it-t"><b>${esc(d.numero)} · ${esc(d.unidade)}${d.unidadeCode ? ` <span class="muted small">(${esc(d.unidadeCode)})</span>` : ""}</b><small>${itensTxt(d)}<br>Proposta de ${quemProp(d)}</small></div>
       <div class="row" style="gap:6px"><button class="btn sm primary" data-act="det-assinar" data-id="${d.id}">${ic("autorizacoes")}Assinar decisão</button><button class="btn sm" data-act="det-alterar" data-id="${d.id}">Alterar</button><button class="btn sm ghost" data-act="det-recusar" data-id="${d.id}">Recusar</button></div></div>`).join("")}</div>`
       : `<div class="card-b"><p class="small muted">Nenhuma proposta aguardando. Para decidir, diga ao assistente, por exemplo: “destinar 30 cadeiras para o CCS”. Ele mostra a disponibilidade e pede a sua assinatura.</p></div>`) : "";
-  const blocoProp = prop ? (minhas.length ? `<div class="list">${minhas.map(d => `<div class="li" style="grid-template-columns:minmax(0,1fr) auto"><div class="it-t"><b>${esc(d.numero)} · ${esc(d.unidade)}</b><small>${itensTxt(d)}${d.situacao === "RECUSADA" ? `<br>Não aprovada: ${esc(d.motivoRecusa || "")}` : ""}</small></div>
-      <div class="row" style="gap:6px">${d.situacao === "PROPOSTA" ? `<span class="pill">Aguardando decisão</span><button class="btn sm ghost" data-act="det-retirar" data-id="${d.id}">Retirar</button>` : `<span class="pill" style="color:var(--crit-ink);background:var(--crit-soft)">Não aprovada</span>`}</div></div>`).join("")}</div>`
+  const blocoProp = verProps ? (minhas.length ? `<div class="list">${minhas.map(d => `<div class="li" style="grid-template-columns:minmax(0,1fr) auto"><div class="it-t"><b>${esc(d.numero)} · ${esc(d.unidade)}</b><small>${itensTxt(d)}${d.propostoPor !== S.me.id ? `<br>Proposta por ${quemProp(d)}` : ""}${d.situacao === "RECUSADA" ? `<br>Não aprovada: ${esc(d.motivoRecusa || "")}` : ""}</small></div>
+      <div class="row" style="gap:6px">${d.situacao === "PROPOSTA" ? `<span class="pill">Aguardando decisão</span>${d.propostoPor === S.me.id ? `<button class="btn sm ghost" data-act="det-retirar" data-id="${d.id}">Retirar</button>` : ""}` : `<span class="pill" style="color:var(--crit-ink);background:var(--crit-soft)">Não aprovada</span>`}</div></div>`).join("")}</div>`
       : `<div class="card-b"><p class="small muted">Para propor, diga ao assistente, por exemplo: “quero mandar um projetor para o CCEN”. Ele mostra a disponibilidade e envia a proposta para a decisão dos autorizadores. O plano só começa depois da assinatura.</p></div>`) : "";
   const blocoRec = rec.length ? `<div class="list">${rec.map(d => { const p = S.plans[d.planoId]; return `<a class="li" style="grid-template-columns:minmax(0,1fr) auto;text-decoration:none;color:inherit" href="#plano-${p.id}"><div class="it-t"><b>${esc(p.numero)} · ${esc(d.unidade)}</b><small>${itensTxt(d)}<br>Decisão assinada: ${esc(detCargo(d))}, ${fmtD((d.assinatura || {}).assinadoEm || d.criadoEm)} (${esc(d.numero)})</small></div><span class="pill"><i></i>${esc(ST[p.status].l)}</span></a>`; }).join("")}</div>` : "";
-  return `<section class="card" style="margin-bottom:16px"><div class="card-h"><h3>${dec ? "Propostas aguardando a sua decisão" : prop ? "Propostas de destinação" : "Decisões recentes"}</h3><span class="sub">${dec ? plural(props.length, "proposta", "propostas") : prop ? "a decisão é de um autorizador, por assinatura" : ""}</span><span class="sp"></span>${dec ? `<button class="btn sm primary" data-act="det-nova">${ic("plus")}Decidir destinação</button>` : prop ? `<button class="btn sm primary" data-act="det-nova">${ic("plus")}Propor destinação</button>` : ""}</div>
+  return `<section class="card" style="margin-bottom:16px"><div class="card-h"><h3>${dec ? "Propostas aguardando a sua decisão" : prop ? "Propostas de destinação" : minhas.length ? "Propostas aguardando decisão" : "Decisões recentes"}</h3><span class="sub">${dec ? plural(props.length, "proposta", "propostas") : verProps ? "a decisão é de um autorizador, por assinatura" : ""}</span><span class="sp"></span>${dec ? `<button class="btn sm primary" data-act="det-nova">${ic("plus")}Decidir destinação</button>` : prop ? `<button class="btn sm primary" data-act="det-nova">${ic("plus")}Propor destinação</button>` : ""}</div>
     ${blocoDec}${blocoProp}${rec.length ? `<div class="card-h" style="border-top:1px solid var(--line-2)"><h3 style="font-size:14px">Iniciados por decisão, em formalização</h3></div>${blocoRec}` : ""}</section>`;
 }
 function detMontarPlano(id) {
@@ -5062,7 +5071,7 @@ document.addEventListener("click", async e => {
     case "sort": { const k = el.dataset.k; if (S.ui.sort === k) S.ui.dir *= -1; else { S.ui.sort = k; S.ui.dir = k === "desc" ? 1 : -1; } render(); break; }
     case "sit": S.ui.sit = el.dataset.k; render(); break;
     case "pview": S.ui.planView = el.dataset.k; render(); break;
-    case "pst": S.ui.planSt = el.dataset.k; render(); break;
+    case "pst": S.ui.planSt = el.dataset.k; S.ui.planStManual = true; render(); break;
     case "new-plan": closeModal(); if (canDeterminar() || canPropor()) formDeterminacao(el.dataset.item ? {itens:[{material_id:el.dataset.item, quantidade:""}]} : {}); else formPlano(null, el.dataset.item); break;
     case "edit-plan": formPlano(id); break;
     case "send-plan": act_send(id); break;
