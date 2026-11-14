@@ -1114,6 +1114,7 @@ async function sbLoad(force) {
     q("planos", "select=*&order=criado_em"), q("plano_itens", "select=*"), q("plano_etapas", "select=plano_id,status,em&order=id"), q("eventos", "select=*&order=id"),
     q("assinaturas", "select=*"), q("entregas", "select=*"), q("tombamentos", "select=*"), SB.req("log_assistente?select=*&order=em.desc&limit=300"), SB.req("estrutura_meta?select=*")]);
   const dets = await q("determinacoes", "select=*&order=criado_em").catch(() => []);
+  const anexos = await q("plano_anexos", "select=*&order=enviado_em").catch(() => []);
   const [emps, eits, bens] = await Promise.all([q("empenhos", "select=*&order=recebido_em").catch(() => []), q("empenho_itens", "select=*&order=seq").catch(() => []), q("bens", "select=*").catch(() => [])]);
   const sig = JSON.stringify([cfg[0] && cfg[0].atualizado_em, perfis.map(p => p.id + p.papeis.join() + p.aprovado + p.nome).join(), mats.length, mats.reduce((a, m) => a > m.atualizado_em ? a : m.atualizado_em, ""), lotes.length, planos.length, evs.length && evs[evs.length - 1].id, logs.length && logs[0].id, meta[0] && meta[0].atualizado_em, tombs.length, emps.length, emps.reduce((a, e) => a > e.atualizado_em ? a : e.atualizado_em, ""), bens.length, dets.length, dets.reduce((a, d) => a > d.atualizado_em ? a : d.atualizado_em, "")]);
   if (!force && sig === SBSIG) return false; SBSIG = sig;
@@ -1137,6 +1138,7 @@ async function sbLoad(force) {
     plans[p.id] = {id:p.id, numero:p.numero, legado:p.legado, status:p.status, unidade:p.unidade, unidadeCode:p.unidade_code || "", orgaoCode:p.orgao_code || "", finalidade:p.finalidade, justificativa:p.justificativa, demanda:p.demanda,
       processo:p.processo, fundamentacao:p.fundamentacao, despacho:p.despacho, assinaturasExigidas:p.assinaturas_exigidas || [], assinaturasMinimas:p.assinaturas_minimas || null, docHash:p.doc_hash, conferencia:p.conferencia || {}, devolucao:p.devolucao, indeferimento:p.indeferimento, cancelamento:p.cancelamento,
       criadoPor:p.criado_por, criadoEm:ms(p.criado_em), itens:I.o[p.id] || [], etapas:E.o[p.id] || [{s:p.status, at:ms(p.etapa_em)}], eventos:V.o[p.id] || [], assinaturas:A[p.id] || {},
+      anexos:anexos.filter(a => a.plano_id === p.id).map(a => ({id:a.id, tipo:a.tipo, nome:a.nome, descricao:a.descricao, mime:a.mime, tamanho:+a.tamanho, sha256:a.sha256, caminho:a.caminho, por:a.enviado_por, papel:a.papel, em:ms(a.enviado_em)})),
       entrega:en ? {data:ms(en.data), recebedor:en.recebedor, siape:en.siape, cargo:en.cargo, local:en.local, registradoPor:en.registrado_por, tombamentos:T[p.id] || {}} : null};
     Object.values(plans[p.id].assinaturas).forEach(a => a.numero = p.numero); });
   S.items = items; S.plans = plans;
@@ -2213,7 +2215,9 @@ function vPlano() {
     </div>
     <div class="c-4" style="display:flex;flex-direction:column;gap:16px">
       ${p.legado ? "" : `<section class="card"><div class="card-h"><h3>Assinaturas</h3><span class="sub">${minOf(p) > 1 ? "os dois autorizadores assinam" : "qualquer um dos autorizadores assina"}</span></div><div class="card-b" style="padding-top:10px">${sigBlocks}</div></section>`}
-      <section class="card"><div class="card-h"><h3>Documentos</h3></div><div class="card-b" style="padding-top:10px;display:flex;flex-direction:column;gap:8px">
+      <section class="card"><div class="card-h"><h3>Documentos</h3>${!p.legado && can.formalize() && p.status !== "CANCELADO" ? `<div class="r"><button class="btn sm ghost" data-act="anexo-novo" data-id="${p.id}">Anexar documento</button></div>` : ""}</div><div class="card-b" style="padding-top:10px;display:flex;flex-direction:column;gap:8px">
+        ${anexosDe(p).slice().reverse().map(a => anexoLinha(p, a)).join("")}
+        ${!p.legado && !anexosDe(p, "AUTORIZACAO").length && !["RASCUNHO","CANCELADO","INDEFERIDO"].includes(p.status) ? `<p class="small muted">${p.status === "INSTRUCAO" ? "A Formalização anexa o documento autorizativo ao formalizar o plano." : "Nenhum documento autorizativo anexado."}</p>` : ""}
         ${p.legado ? '<p class="small muted">Registros históricos não geram termos no Destina.</p>' : p.processo ? `<button class="btn" data-act="doc" data-doc="aut" data-id="${p.id}" style="justify-content:flex-start">${ic("planos")}Termo de autorização de destinação</button>` : '<p class="small muted">O termo de autorização é gerado na formalização.</p>'}
         ${p.status === "ENTREGUE" && !p.legado ? `<button class="btn" data-act="doc" data-doc="ent" data-id="${p.id}" style="justify-content:flex-start">${ic("entregas")}Guia de entrega e termo de responsabilidade</button>` : ""}
       </div></section>
@@ -2252,6 +2256,9 @@ function act_formalize(id) {
     <p class="ink2" style="margin-bottom:14px">Complete a instrução. Ao submeter, o sistema gera o termo de autorização, calcula o hash do conteúdo e o envia aos autorizadores.</p>
     <div class="form-grid">
       <div class="field"><label>Número do processo no SIPAC</label><input class="inp" id="proc" value="${esc(p0.processo || "")}" placeholder="23074.000000/2026-00" required></div>
+      <div class="field full"><label>Documento autorizativo <span class="muted">(PDF, JPG ou PNG, até 10 MB)</span></label>
+        ${anexosDe(p0, "AUTORIZACAO").length ? `<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:6px">${anexosDe(p0, "AUTORIZACAO").map(a => anexoLinha(p0, a)).join("")}</div><span class="hint">Já anexado. Se quiser, envie outra versão abaixo.</span>` : `<span class="hint">Obrigatório. Anexe o documento que comprova a autorização (despacho, ofício ou documento assinado no SIPAC). Ele fica guardado no plano com o hash SHA-256.</span>`}
+        <input class="inp" id="doc-aut" type="file" accept="application/pdf,image/jpeg,image/png" style="margin-top:6px"></div>
       ${(() => { const dd = detList().find(x => x.planoId === id && x.assinatura && ["PRA","REITORIA"].includes(x.papel)); const dois = minAssin(tot) > 1;
         const quem = dd ? `Já autorizado pela decisão de ${(dd.assinatura.nome || S.cfg.signatarios[dd.papel].nome)} (${dd.assinatura.cargo || S.cfg.signatarios[dd.papel].cargo})` : req.map(r => S.cfg.signatarios[r].cargo).join(dois ? " e " : " ou ");
         const semValor = p0.itens.some(li => !(+li.vu > 0));
@@ -2263,8 +2270,11 @@ function act_formalize(id) {
     </div>`, foot:`<button class="btn" data-act="close">Cancelar</button><button class="btn primary" id="go">Submeter à autorização</button>`});
   $("#go", m).onclick = async () => {
     const proc = $("#proc").value.trim(); if (!proc) { toast("Informe o número do processo.", true); return; }
+    const arq = $("#doc-aut").files[0];
+    if (!arq && !anexosDe(S.plans[id], "AUTORIZACAO").length) { toast("Anexe o documento autorizativo para formalizar.", true); return; }
+    if (arq) { const e = validarArquivo(arq); if (e) { toast(e, true); return; } $("#go").disabled = true; const ok = await anexarDocumento(S.plans[id], arq, "AUTORIZACAO", "Anexado na formalização"); $("#go").disabled = false; if (!ok) return; $("#doc-aut").value = ""; }
     if (S.mode === "oficial") { if (await sbDo("formalizar_plano", {p_papel:R(), p_id:id, p_processo:proc, p_fundamentacao:$("#fund").value.trim(), p_despacho:$("#desp").value.trim()}, p0.numero + " submetido à autorização.")) closeModal(); return; }
-    const p = clone(p0); p.processo = proc; p.fundamentacao = $("#fund").value.trim(); p.despacho = $("#desp").value.trim();
+    const p = clone(S.plans[id]); p.processo = proc; p.fundamentacao = $("#fund").value.trim(); p.despacho = $("#desp").value.trim();
     // a decisão assinada do autorizador vale como autorização (se os bens não mudaram)
     const d = detList().find(x => x.planoId === id && x.situacao === "ATENDIDA" && x.assinatura && ["PRA","REITORIA"].includes(x.papel));
     const igual = d && (() => { const a = {}, b = {}; p.itens.forEach(li => a[li.itemId] = (a[li.itemId] || 0) + li.qtd); d.itens.forEach(i => b[i.material_id] = (b[i.material_id] || 0) + i.quantidade); return Object.keys({...a, ...b}).every(k => a[k] === b[k]); })();
@@ -3259,6 +3269,7 @@ async function docAutorizacao(p, preview) {
   return `<div class="doc">${docHeader()}
     <h4>TERMO DE AUTORIZAÇÃO DE DESTINAÇÃO DE BENS DA RESERVA TÉCNICA</h4>
     <div class="dn">${esc(p.numero)} · Processo SIPAC ${esc(p.processo || "a definir")}</div>
+    ${anexosDe(p, "AUTORIZACAO").length ? `<div class="dn">Documento autorizativo anexado: ${anexosDe(p, "AUTORIZACAO").map(a => esc(a.nome) + " (SHA-256 " + esc(a.sha256.slice(0, 16)) + "…)").join("; ")}</div>` : ""}
     <p><b>Unidade de destino:</b> ${esc(p.unidade)}${p.unidadeCode ? ` (código SIPAC ${esc(p.unidadeCode)})` : ""}${p.unidadeCode && uPathText(p.unidadeCode) ? `<br><b>Vinculação:</b> ${esc(uPathText(p.unidadeCode))}` : ""}<br><b>Finalidade:</b> ${esc(p.finalidade)}${p.demanda ? `<br><b>Demanda:</b> ${esc(p.demanda)}` : ""}</p>
     <p><b>Justificativa.</b> ${esc(p.justificativa)}</p>
     <table><thead><tr><th>Código</th><th>Descrição do bem</th><th style="text-align:right">Qtd.</th><th style="text-align:right">Valor unit.</th><th style="text-align:right">Subtotal</th></tr></thead><tbody>
@@ -3299,6 +3310,80 @@ async function openDoc(id, kind) {
     const css = [...sheet.cssRules].filter(r => r.selectorText && r.selectorText.startsWith(".doc")).map(r => r.cssText).join("\n");
     const page = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(title)} ${esc(p.numero)}</title><style>body{margin:0;padding:24px;background:#fff;font-family:system-ui,sans-serif}${css}.doc{border:0}@media print{body{padding:0}}</style></head><body>${html}<script>setTimeout(function(){try{window.print()}catch(e){}},400)<\/script></body></html>`;
     saveFile((kind === "ent" ? "termo-responsabilidade-" : "termo-autorizacao-") + p.numero.replace(/[^\w]+/g, "-").toLowerCase() + ".html", page);
+  };
+}
+
+// ---------- documentos anexados ao plano (comprovação da autorização) ----------
+const ANEXO_MIME = {"application/pdf":"PDF", "image/jpeg":"JPG", "image/png":"PNG"};
+const ANEXO_MAX = 10 * 1024 * 1024;
+async function sha256Bytes(buf) { const h = await crypto.subtle.digest("SHA-256", buf); return [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, "0")).join(""); }
+function fmtBytes(n) { return n >= 1048576 ? (n / 1048576).toFixed(1).replace(".", ",") + " MB" : Math.max(1, Math.round(n / 1024)) + " KB"; }
+function anexosDe(p, tipo) { return (p.anexos || []).filter(a => !tipo || a.tipo === tipo); }
+function validarArquivo(f) {
+  if (!f) return "Escolha o arquivo do documento.";
+  if (!ANEXO_MIME[f.type]) return "Envie o documento em PDF, JPG ou PNG.";
+  if (f.size > ANEXO_MAX) return "O arquivo tem " + fmtBytes(f.size) + "; o limite é 10 MB.";
+  if (S.mode !== "oficial" && f.size > 3 * 1024 * 1024) return "Na demonstração o limite é 3 MB (os dados ficam no navegador).";
+  return "";
+}
+async function anexarDocumento(p, f, tipo, descricao) {
+  const erro = validarArquivo(f); if (erro) { toast(erro, true); return false; }
+  const buf = await f.arrayBuffer(); const sha = await sha256Bytes(buf);
+  const nome = f.name.replace(/[\\/]/g, "_").slice(0, 200);
+  if (S.mode === "oficial") {
+    const ext = {"application/pdf":"pdf", "image/jpeg":"jpg", "image/png":"png"}[f.type];
+    const caminho = p.id + "/" + Date.now() + "-" + sha.slice(0, 12) + "." + ext;
+    try {
+      const t = await SB.token(); if (!t) throw new Error("Sua sessão expirou. Entre novamente.");
+      const r = await fetch(SB.url + "/storage/v1/object/documentos/" + caminho, {method:"POST", headers:{apikey:SB.key, Authorization:"Bearer " + t, "Content-Type":f.type, "x-upsert":"false"}, body:buf});
+      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(/row-level|policy|unauthor/i.test(j.message || j.error || "") ? "Seu perfil não pode enviar documentos." : (j.message || "Falha ao enviar o arquivo (" + r.status + ").")); }
+      await SB.rpc("anexar_documento", {p_papel:R(), p_plano:p.id, p_tipo:tipo, p_nome:nome, p_descricao:descricao || "", p_mime:f.type, p_tamanho:f.size, p_sha256:sha, p_caminho:caminho});
+      await sbLoad(true); return true;
+    } catch (e) { toast(e.message, true); return false; }
+  }
+  const dataUrl = await new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(f); });
+  const q = clone(S.plans[p.id]); q.anexos = (q.anexos || []).concat([{id:rid(), tipo, nome, descricao:descricao || "", mime:f.type, tamanho:f.size, sha256:sha, dataUrl, por:S.me.id, papel:R(), em:now()}]);
+  await addEvent(q, "documento", (tipo === "AUTORIZACAO" ? "Documento autorizativo anexado: " : "Documento anexado: ") + nome + " · SHA-256 " + sha.slice(0, 16) + "…");
+  if (!(await persist("planos", q.id, q))) { toast("O arquivo é grande demais para a demonstração.", true); return false; }
+  return true;
+}
+async function abrirAnexo(planoId, anexoId) {
+  const p = S.plans[planoId]; const a = p && (p.anexos || []).find(x => x.id === anexoId); if (!a) return;
+  const w = window.open("", "_blank");
+  try {
+    let blob;
+    if (S.mode === "oficial") {
+      const t = await SB.token(); if (!t) throw new Error("Sua sessão expirou. Entre novamente.");
+      const r = await fetch(SB.url + "/storage/v1/object/authenticated/documentos/" + a.caminho, {headers:{apikey:SB.key, Authorization:"Bearer " + t}});
+      if (!r.ok) throw new Error("Não foi possível baixar o documento (" + r.status + ").");
+      blob = await r.blob();
+    } else blob = await (await fetch(a.dataUrl)).blob();
+    const sha = await sha256Bytes(await blob.arrayBuffer());
+    const url = URL.createObjectURL(new Blob([blob], {type:a.mime}));
+    if (w) w.location.href = url; else { const l = document.createElement("a"); l.href = url; l.download = a.nome; l.click(); }
+    sha === a.sha256 ? toast("Documento íntegro: o SHA-256 confere com o registrado no envio.") : toast("Atenção: o arquivo baixado não confere com o hash registrado no envio.", true);
+  } catch (e) { if (w) w.close(); toast(e.message, true); }
+}
+function anexoLinha(p, a) {
+  return `<div class="row" style="gap:10px;align-items:flex-start;border:1px solid var(--line-2);border-radius:10px;padding:10px 12px">
+    <span style="flex:none;margin-top:1px;color:var(--brand)">${ic("documentos")}</span>
+    <div style="flex:1;min-width:0"><b style="display:block;overflow-wrap:anywhere">${esc(a.nome)}</b>
+      <span class="small muted">${a.tipo === "AUTORIZACAO" ? "Documento autorizativo" : "Documento"}${a.descricao ? " · " + esc(a.descricao) : ""} · ${ANEXO_MIME[a.mime] || ""} ${fmtBytes(a.tamanho)}<br>Enviado por ${esc(nameOf(a.por))} em ${fmtDT(a.em)}<br><span class="mono" title="${esc(a.sha256)}">SHA-256 ${esc(a.sha256.slice(0, 24))}…</span></span></div>
+    <button class="btn sm" data-act="anexo-abrir" data-id="${p.id}" data-k="${a.id}">Abrir</button></div>`;
+}
+function formAnexo(id) {
+  const p = S.plans[id];
+  const m = openModal({title:"Anexar documento ao " + esc(p.numero), body:`
+    <div class="field"><label>Tipo</label><select class="inp" id="ax-tipo"><option value="AUTORIZACAO">Documento autorizativo</option><option value="OUTRO">Outro documento do processo</option></select></div>
+    <div class="field"><label>Arquivo (PDF, JPG ou PNG, até 10 MB)</label><input class="inp" id="ax-arq" type="file" accept="application/pdf,image/jpeg,image/png"></div>
+    <div class="field"><label>Descrição <span class="muted">(opcional)</span></label><input class="inp" id="ax-desc" maxlength="300" placeholder="Ex.: Despacho da Reitoria no processo ${esc(p.processo || "")}"></div>
+    <p class="small muted">O arquivo fica guardado no sistema com o hash SHA-256 e não pode ser alterado nem apagado. Para corrigir, anexe uma nova versão.</p>`,
+    foot:`<button class="btn" data-act="close">Cancelar</button><button class="btn primary" id="ax-go">Anexar documento</button>`});
+  $("#ax-go", m).onclick = async () => {
+    const f = $("#ax-arq").files[0]; const e = validarArquivo(f); if (e) return toast(e, true);
+    $("#ax-go").disabled = true; $("#ax-go").textContent = "Enviando…";
+    if (await anexarDocumento(p, f, $("#ax-tipo").value, $("#ax-desc").value.trim())) { closeModal(); toast("Documento anexado ao " + p.numero + "."); render(); }
+    else { $("#ax-go").disabled = false; $("#ax-go").textContent = "Anexar documento"; }
   };
 }
 
@@ -5318,6 +5403,8 @@ document.addEventListener("click", async e => {
     case "cancel-plan": act_cancel(id); break;
     case "return-plan": act_return(id); break;
     case "formalize": act_formalize(id); break;
+    case "anexo-novo": formAnexo(id); break;
+    case "anexo-abrir": abrirAnexo(id, el.dataset.k); break;
     case "sign": act_sign(id); break;
     case "deny": act_deny(id); break;
     case "batch-sign": act_batch(); break;
